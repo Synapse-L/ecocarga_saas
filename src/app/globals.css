@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #0a0a0a;
+  --primary: #004D31;
+  --primary-foreground: #ffffff;
+  --accent: #B2D235;
+  --accent-foreground: #004D31;
+  --card: #f8fafc;
+  --card-foreground: #0a0a0a;
+  --border: #e2e8f0;
+  --input: #e2e8f0;
+  --ring: #004D31;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: #004D31;
+  --color-primary-foreground: #ffffff;
+  --color-accent: #B2D235;
+  --color-accent-foreground: #004D31;
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: #004D31;
+  --font-sans: "Inter", var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@layer base {
+  body {
+    background: #fdfdfd;
+    color: #1a1a1a;
+    font-family: 'Inter', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+@layer components {
+  .glass {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+  }
+  
+  .premium-shadow {
+    box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.05);
+  }
+}
+
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-5px); }
+  100% { transform: translateY(0px); }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}

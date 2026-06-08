@@ -1,0 +1,245 @@
+/* Ecocarga — Capa A4 (210mm × 297mm) */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+@page {
+  size: A4 portrait;
+  margin: 0;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+  color-adjust: exact;
+}
+
+body {
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  background: #1a1a1a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+/* Preview em tela: escala A4 inteira sem scroll */
+@media screen {
+  .cover {
+    transform: scale(min(calc(100vw / 210mm), calc((100vh - 16px) / 297mm)));
+    transform-origin: center center;
+  }
+}
+
+.cover {
+  position: relative;
+  width: 210mm;
+  height: 297mm;
+  overflow: hidden;
+  background: #000000;
+  flex-shrink: 0;
+}
+
+/* Topo */
+.cover__header {
+  position: absolute;
+  top: 22px;
+  left: 24px;
+  z-index: 10;
+}
+
+.cover__logo-small {
+  display: block;
+  width: 185px;
+  height: auto;
+  object-fit: contain;
+}
+
+/* Hero — centralizado na área útil */
+.cover__hero {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 150px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
+}
+
+.cover__hero-stack {
+  width: 480px;
+  max-width: calc(100% - 48px);
+}
+
+.cover__hero-content {
+  position: relative;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  isolation: isolate;
+}
+
+/* Raio — somente atrás do logo */
+.cover__hero-art {
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  width: 380px;
+  max-width: 95%;
+  transform: translateX(-52%);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.cover__lightning {
+  display: block;
+  width: 100%;
+  height: auto;
+  transform: rotate(-18deg);
+  opacity: 0.92;
+}
+
+.cover__hero-content > :not(.cover__hero-art) {
+  position: relative;
+  z-index: 1;
+}
+
+.cover__logo-main {
+  display: block;
+  width: 336px;
+  max-width: 100%;
+  height: auto;
+  margin-bottom: 20px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.cover__proposta-pill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 480px;
+  min-height: 68px;
+  padding: 12px 40px;
+  background: #003f33;
+  border-radius: 34px;
+}
+
+.cover__proposta-text {
+  font-size: 52px;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+  white-space: nowrap;
+}
+
+.cover__comercial {
+  margin-top: 16px;
+  font-size: 56px;
+  line-height: 1.05;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #78a78c;
+}
+
+.proposal-meta {
+  margin-top: 28px;
+  width: 100%;
+  max-width: 480px;
+  padding: 0 8px;
+}
+
+.client-name {
+  font-size: 15px;
+  line-height: 1.4;
+  font-weight: 600;
+  color: rgba(120, 167, 140, 0.95);
+  margin-bottom: 6px;
+}
+
+.consultant-name {
+  font-size: 12px;
+  line-height: 1.5;
+  font-weight: 400;
+  color: rgba(120, 167, 140, 0.72);
+}
+
+.consultant-value {
+  font-weight: 600;
+}
+
+/* Rodapé */
+.cover__footer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 150px;
+  background: #d9d9d9;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 22px 24px 14px;
+}
+
+.cover__footer-contact {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cover__contact-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.2;
+  font-weight: 600;
+  color: #004d31;
+}
+
+.cover__icon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+}
+
+.cover__copyright {
+  text-align: center;
+}
+
+.cover__copyright p {
+  font-size: 9.5px;
+  line-height: 1.45;
+  font-weight: 500;
+  color: #4f8e73;
+}
+
+@media print {
+  body {
+    display: block;
+    overflow: visible;
+    background: #000;
+  }
+
+  .cover {
+    transform: none;
+    page-break-inside: avoid;
+  }
+}
