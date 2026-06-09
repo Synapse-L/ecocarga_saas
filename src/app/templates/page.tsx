@@ -46,26 +46,22 @@ export default function TemplatesPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      // 1. Upload to Storage via API
+      // 1. Upload directly to Supabase Storage
       const fileExt = file.name.split('.').pop();
       const fileName = `${user.id}/${Math.random()}.${fileExt}`;
       
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('path', fileName);
-      formData.append('bucket', 'templates');
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('templates')
+        .upload(fileName, file, {
+          cacheControl: '3600',
+          upsert: true
+        });
 
-      const uploadRes = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
+      if (uploadError) throw uploadError;
 
-      if (!uploadRes.ok) {
-        const errData = await uploadRes.json();
-        throw new Error(errData.error || 'Erro ao enviar template');
-      }
-
-      const { publicUrl } = await uploadRes.json();
+      const { data: { publicUrl } } = supabase.storage
+        .from('templates')
+        .getPublicUrl(fileName);
 
       // 3. Save to Table
       const { error: dbError } = await supabase.from('templates').insert({

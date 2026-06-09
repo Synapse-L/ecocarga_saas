@@ -77,7 +77,7 @@ export default function Dashboard() {
         .from('profiles')
         .select('*')
         .eq('id', user.id)
-        .single();
+        .maybeSingle();
       
       setProfile(profileData || { full_name: user.email?.split('@')[0] });
 

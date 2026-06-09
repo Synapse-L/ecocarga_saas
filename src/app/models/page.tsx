@@ -67,7 +67,7 @@ export default function ModelsPage() {
         .from('profiles')
         .select('*')
         .eq('id', user.id)
-        .single();
+        .maybeSingle();
       setProfile(profileData || { full_name: user.email?.split('@')[0] });
 
       // Fetch models (both global and own user models)
@@ -160,22 +160,19 @@ export default function ModelsPage() {
         const fileName = `${userId}/${Math.random()}.${fileExt}`;
         const filePath = `chargers/${fileName}`;
         
-        const formData = new FormData();
-        formData.append('file', imageFile);
-        formData.append('path', filePath);
-        formData.append('bucket', 'templates');
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('templates')
+          .upload(filePath, imageFile, {
+            cacheControl: '3600',
+            upsert: true
+          });
 
-        const uploadRes = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData,
-        });
+        if (uploadError) throw uploadError;
 
-        if (!uploadRes.ok) {
-          const errData = await uploadRes.json();
-          throw new Error(errData.error || 'Erro ao enviar imagem');
-        }
-
-        const { publicUrl } = await uploadRes.json();
+        const { data: { publicUrl } } = supabase.storage
+          .from('templates')
+          .getPublicUrl(filePath);
+          
         uploadedImageUrl = publicUrl;
       }
 

@@ -7,9 +7,9 @@ import jsPDF from 'jspdf';
  */
 export class PDFService {
   /**
-   * Captures a DOM element and returns its PNG bytes.
+   * Captures a DOM element and returns its JPEG bytes.
    */
-  static async captureElementAsPngBytes(elementId: string): Promise<Uint8Array> {
+  static async captureElementAsJpgBytes(elementId: string): Promise<Uint8Array> {
     const element = document.getElementById(elementId);
     if (!element) throw new Error('Element not found');
 
@@ -19,7 +19,8 @@ export class PDFService {
       logging: false,
     });
 
-    const imgData = canvas.toDataURL('image/png');
+    // Capture as JPEG at 85% quality for a massive reduction in file size
+    const imgData = canvas.toDataURL('image/jpeg', 0.85);
     const base64Data = imgData.split(',')[1];
     const binaryString = atob(base64Data);
     const bytes = new Uint8Array(binaryString.length);
@@ -55,15 +56,15 @@ export class PDFService {
     fileName: string
   ): Promise<void> {
     try {
-      // 1. Capture dynamic pages as PNG bytes (only if they are in pageOrder)
+      // 1. Capture dynamic pages as JPEG bytes (only if they are in pageOrder)
       let coverImageBytes: Uint8Array | null = null;
       let page6ImageBytes: Uint8Array | null = null;
 
       if (pageOrder.some(item => item.type === 'saas-cover')) {
-        coverImageBytes = await this.captureElementAsPngBytes(coverElementId);
+        coverImageBytes = await this.captureElementAsJpgBytes(coverElementId);
       }
       if (pageOrder.some(item => item.type === 'saas-page6')) {
-        page6ImageBytes = await this.captureElementAsPngBytes(page6ElementId);
+        page6ImageBytes = await this.captureElementAsJpgBytes(page6ElementId);
       }
 
       let finalPdfBytes: Uint8Array;
@@ -74,12 +75,12 @@ export class PDFService {
         for (const item of pageOrder) {
           if (item.type === 'saas-cover' && coverImageBytes) {
             const page = finalDoc.addPage([595.27, 841.89]);
-            const pngImage = await finalDoc.embedPng(coverImageBytes);
-            page.drawImage(pngImage, { x: 0, y: 0, width: 595.27, height: 841.89 });
+            const jpgImage = await finalDoc.embedJpg(coverImageBytes);
+            page.drawImage(jpgImage, { x: 0, y: 0, width: 595.27, height: 841.89 });
           } else if (item.type === 'saas-page6' && page6ImageBytes) {
             const page = finalDoc.addPage([595.27, 841.89]);
-            const pngImage = await finalDoc.embedPng(page6ImageBytes);
-            page.drawImage(pngImage, { x: 0, y: 0, width: 595.27, height: 841.89 });
+            const jpgImage = await finalDoc.embedJpg(page6ImageBytes);
+            page.drawImage(jpgImage, { x: 0, y: 0, width: 595.27, height: 841.89 });
           }
         }
         finalPdfBytes = await finalDoc.save();
@@ -97,16 +98,16 @@ export class PDFService {
         if (coverImageBytes) {
           saasCoverDoc = await PDFDocument.create();
           const saasPage = saasCoverDoc.addPage([width, height]);
-          const pngImage = await saasCoverDoc.embedPng(coverImageBytes);
-          saasPage.drawImage(pngImage, { x: 0, y: 0, width, height });
+          const jpgImage = await saasCoverDoc.embedJpg(coverImageBytes);
+          saasPage.drawImage(jpgImage, { x: 0, y: 0, width, height });
         }
 
         let saasPage6Doc: PDFDocument | null = null;
         if (page6ImageBytes) {
           saasPage6Doc = await PDFDocument.create();
           const saasPage = saasPage6Doc.addPage([width, height]);
-          const pngImage = await saasPage6Doc.embedPng(page6ImageBytes);
-          saasPage.drawImage(pngImage, { x: 0, y: 0, width, height });
+          const jpgImage = await saasPage6Doc.embedJpg(page6ImageBytes);
+          saasPage.drawImage(jpgImage, { x: 0, y: 0, width, height });
         }
 
         // 4. Create the final document and copy pages in the requested order
@@ -162,9 +163,9 @@ export class PDFService {
     
     console.log(`Template page size detected for cover/page6 replacement: ${width}x${height}`);
 
-    // Embed both dynamic PNG images
-    const pngCover = await baseDoc.embedPng(coverImageBytes);
-    const pngPage6 = await baseDoc.embedPng(page6ImageBytes);
+    // Embed both dynamic JPEG images
+    const jpgCover = await baseDoc.embedJpg(coverImageBytes);
+    const jpgPage6 = await baseDoc.embedJpg(page6ImageBytes);
 
     const pageCount = baseDoc.getPageCount();
 
@@ -172,7 +173,7 @@ export class PDFService {
     if (pageCount >= 1) {
       baseDoc.removePage(0);
       const newCoverPage = baseDoc.insertPage(0, [width, height]);
-      newCoverPage.drawImage(pngCover, {
+      newCoverPage.drawImage(jpgCover, {
         x: 0,
         y: 0,
         width: width,
@@ -185,7 +186,7 @@ export class PDFService {
     if (baseDoc.getPageCount() >= 6) {
       baseDoc.removePage(5);
       const newPage6 = baseDoc.insertPage(5, [width, height]);
-      newPage6.drawImage(pngPage6, {
+      newPage6.drawImage(jpgPage6, {
         x: 0,
         y: 0,
         width: width,
@@ -198,7 +199,7 @@ export class PDFService {
         baseDoc.addPage([width, height]);
       }
       const newPage6 = baseDoc.addPage([width, height]);
-      newPage6.drawImage(pngPage6, {
+      newPage6.drawImage(jpgPage6, {
         x: 0,
         y: 0,
         width: width,
@@ -224,11 +225,11 @@ export class PDFService {
       const templateResponse = await fetch(templateUrl);
       const templateBuffer = await templateResponse.arrayBuffer();
 
-      // 2. Capture dynamic cover (page 1) as PNG bytes
-      const coverImageBytes = await this.captureElementAsPngBytes(coverElementId);
+      // 2. Capture dynamic cover (page 1) as JPEG bytes
+      const coverImageBytes = await this.captureElementAsJpgBytes(coverElementId);
 
-      // 3. Capture dynamic page 6 as PNG bytes
-      const page6ImageBytes = await this.captureElementAsPngBytes(page6ElementId);
+      // 3. Capture dynamic page 6 as JPEG bytes
+      const page6ImageBytes = await this.captureElementAsJpgBytes(page6ElementId);
 
       // 4. Merge and enforce matching page dimensions
       const finalPdfBytes = await this.replaceCoverAndPage6(templateBuffer, coverImageBytes, page6ImageBytes);
@@ -257,19 +258,19 @@ export class PDFService {
   ): Promise<void> {
     try {
       // 1. Capture cover and page 6
-      const coverImageBytes = await this.captureElementAsPngBytes(coverElementId);
-      const page6ImageBytes = await this.captureElementAsPngBytes(page6ElementId);
+      const coverImageBytes = await this.captureElementAsJpgBytes(coverElementId);
+      const page6ImageBytes = await this.captureElementAsJpgBytes(page6ElementId);
       
       // 2. Create high-res PDF with two pages (2480x3508 px each)
       const finalDoc = await PDFDocument.create();
       
       const coverPage = finalDoc.addPage([2480, 3508]);
-      const pngCover = await finalDoc.embedPng(coverImageBytes);
-      coverPage.drawImage(pngCover, { x: 0, y: 0, width: 2480, height: 3508 });
+      const jpgCover = await finalDoc.embedJpg(coverImageBytes);
+      coverPage.drawImage(jpgCover, { x: 0, y: 0, width: 2480, height: 3508 });
       
       const page6Page = finalDoc.addPage([2480, 3508]);
-      const pngPage6 = await finalDoc.embedPng(page6ImageBytes);
-      page6Page.drawImage(pngPage6, { x: 0, y: 0, width: 2480, height: 3508 });
+      const jpgPage6 = await finalDoc.embedJpg(page6ImageBytes);
+      page6Page.drawImage(jpgPage6, { x: 0, y: 0, width: 2480, height: 3508 });
       
       const finalPdfBytes = await finalDoc.save();
 
@@ -287,6 +288,9 @@ export class PDFService {
     }
   }
 
+  /**
+   * Generates a PDF with custom page order and opens it in a new browser tab.
+   */
   static async viewCustomOrderedPdf(
     templateUrl: string | null,
     coverElementId: string,
@@ -299,10 +303,10 @@ export class PDFService {
       let page6ImageBytes: Uint8Array | null = null;
 
       if (pageOrder.some(item => item.type === 'saas-cover')) {
-        coverImageBytes = await this.captureElementAsPngBytes(coverElementId);
+        coverImageBytes = await this.captureElementAsJpgBytes(coverElementId);
       }
       if (pageOrder.some(item => item.type === 'saas-page6')) {
-        page6ImageBytes = await this.captureElementAsPngBytes(page6ElementId);
+        page6ImageBytes = await this.captureElementAsJpgBytes(page6ElementId);
       }
 
       let finalPdfBytes: Uint8Array;
@@ -312,13 +316,13 @@ export class PDFService {
         const finalDoc = await PDFDocument.create();
         if (coverImageBytes) {
           const page = finalDoc.addPage([595.27, 841.89]);
-          const pngImage = await finalDoc.embedPng(coverImageBytes);
-          page.drawImage(pngImage, { x: 0, y: 0, width: 595.27, height: 841.89 });
+          const jpgImage = await finalDoc.embedJpg(coverImageBytes);
+          page.drawImage(jpgImage, { x: 0, y: 0, width: 595.27, height: 841.89 });
         }
         if (page6ImageBytes) {
           const page = finalDoc.addPage([595.27, 841.89]);
-          const pngImage = await finalDoc.embedPng(page6ImageBytes);
-          page.drawImage(pngImage, { x: 0, y: 0, width: 595.27, height: 841.89 });
+          const jpgImage = await finalDoc.embedJpg(page6ImageBytes);
+          page.drawImage(jpgImage, { x: 0, y: 0, width: 595.27, height: 841.89 });
         }
         finalPdfBytes = await finalDoc.save();
       } else {
@@ -333,8 +337,8 @@ export class PDFService {
         if (coverImageBytes) {
           saasCoverDoc = await PDFDocument.create();
           const saasPage = saasCoverDoc.addPage([width, height]);
-          const pngImage = await saasCoverDoc.embedPng(coverImageBytes);
-          saasPage.drawImage(pngImage, { x: 0, y: 0, width, height });
+          const jpgImage = await saasCoverDoc.embedJpg(coverImageBytes);
+          saasPage.drawImage(jpgImage, { x: 0, y: 0, width, height });
         }
 
         // Create temporary document for SaaS page 6 with matching size
@@ -342,8 +346,8 @@ export class PDFService {
         if (page6ImageBytes) {
           saasPage6Doc = await PDFDocument.create();
           const saasPage = saasPage6Doc.addPage([width, height]);
-          const pngImage = await saasPage6Doc.embedPng(page6ImageBytes);
-          saasPage.drawImage(pngImage, { x: 0, y: 0, width, height });
+          const jpgImage = await saasPage6Doc.embedJpg(page6ImageBytes);
+          saasPage.drawImage(jpgImage, { x: 0, y: 0, width, height });
         }
 
         const finalDoc = await PDFDocument.create();
@@ -387,7 +391,7 @@ export class PDFService {
         logging: false,
       });
 
-      const imgData = canvas.toDataURL('image/png');
+      const imgData = canvas.toDataURL('image/jpeg', 0.85);
       const pdf = new jsPDF({
         orientation: 'portrait',
         unit: 'pt',
@@ -397,7 +401,7 @@ export class PDFService {
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = pdf.internal.pageSize.getHeight();
 
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
       const blob = pdf.output('blob');
       const url = URL.createObjectURL(blob);
       window.open(url, '_blank');
