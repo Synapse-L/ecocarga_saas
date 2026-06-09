@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { ProposalData } from '@/types/proposal';
+import { useApp } from '@/context/AppContext';
 
 interface Props {
   data: ProposalData;
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export const ProposalCover: React.FC<Props> = ({ data, representativeName }) => {
+  const { t } = useApp();
   const clientName = data.client?.name || 'Cliente de Teste';
   const consultantName = representativeName || 'Consultor Comercial';
 
@@ -68,13 +70,13 @@ export const ProposalCover: React.FC<Props> = ({ data, representativeName }) => 
             }}
           >
             <span style={{ fontSize: '30pt', fontWeight: 900, color: '#ffffff', letterSpacing: '0.5px' }}>
-              Proposta
+              {t('proposal')}
             </span>
           </div>
 
           {/* Green text "Comercial" */}
           <div style={{ fontSize: '32pt', fontWeight: 900, color: '#004D31', letterSpacing: '1px' }}>
-            Comercial
+            {t('commercial')}
           </div>
         </div>
 
@@ -91,11 +93,11 @@ export const ProposalCover: React.FC<Props> = ({ data, representativeName }) => 
           }}
         >
           <div style={{ fontSize: '15pt', color: '#004D31', lineHeight: '1.4' }}>
-            <span style={{ fontWeight: 800 }}>Representante: </span>
+            <span style={{ fontWeight: 800 }}>{t('representative')}: </span>
             <span style={{ fontWeight: 500 }}>{consultantName}</span>
           </div>
           <div style={{ fontSize: '15pt', color: '#004D31', lineHeight: '1.4' }}>
-            <span style={{ fontWeight: 800 }}>Cliente: </span>
+            <span style={{ fontWeight: 800 }}>{t('client')}: </span>
             <span style={{ fontWeight: 500 }}>{clientName}</span>
           </div>
         </div>
@@ -132,7 +134,7 @@ export const ProposalCover: React.FC<Props> = ({ data, representativeName }) => 
         {/* Legal copyright footer */}
         <div style={{ padding: '3mm 20mm 4.5mm 20mm', textAlign: 'center', backgroundColor: '#ffffff' }}>
           <p style={{ margin: 0, fontSize: '6.5pt', color: '#889296', fontWeight: 700 }}>
-            Copyright © 2026 Ecocarga. Todos os direitos reservados.
+            {t('copyright')}
           </p>
         </div>
       </div>

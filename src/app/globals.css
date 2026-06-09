@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Override the dark variant to use the .dark class */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
   --foreground: #0a0a0a;
@@ -12,6 +15,16 @@
   --border: #e2e8f0;
   --input: #e2e8f0;
   --ring: #004D31;
+}
+
+.dark {
+  --background: #0b0f19; /* Premium slate/blue dark */
+  --foreground: #f8fafc;
+  --card: #111827; /* Gray 900 */
+  --card-foreground: #f8fafc;
+  --border: #1f2937; /* Gray 800 */
+  --input: #1f2937;
+  --ring: #B2D235;
 }
 
 @theme inline {
@@ -32,10 +45,11 @@
 
 @layer base {
   body {
-    background: #fdfdfd;
-    color: #1a1a1a;
+    background: var(--background);
+    color: var(--foreground);
     font-family: 'Inter', sans-serif;
     -webkit-font-smoothing: antialiased;
+    transition: background-color 0.3s ease, color 0.3s ease;
   }
 }
 

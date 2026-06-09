@@ -2,12 +2,15 @@
 
 import React from 'react';
 import { ProposalData } from '@/types/proposal';
+import { useApp } from '@/context/AppContext';
 
 interface Props {
   data: ProposalData;
 }
 
 export const ProposalPage6: React.FC<Props> = ({ data }) => {
+  const { t } = useApp();
+
   // Format dates and price variables
   const emissionDateStr = data.metadata?.emissionDate || '19/05/2026';
   const validityDays = data.metadata?.validityDays || 15;
@@ -81,10 +84,10 @@ export const ProposalPage6: React.FC<Props> = ({ data }) => {
       {/* TITLE SECTION */}
       <div style={{ marginBottom: '10mm', zIndex: 2 }}>
         <h1 style={{ margin: 0, fontSize: '38pt', fontWeight: 900, lineHeight: 1.1, letterSpacing: '-0.5px' }}>
-          Chegou a hora
+          {t('itsTime')}
         </h1>
         <h2 style={{ margin: 0, fontSize: '24pt', fontWeight: 400, marginTop: '2px', letterSpacing: '-0.5px' }}>
-          de fazer a sua escolha
+          {t('toMakeChoice')}
         </h2>
       </div>
 
@@ -123,21 +126,21 @@ export const ProposalPage6: React.FC<Props> = ({ data }) => {
               <span style={{ color: '#B2D235', display: 'flex', alignItems: 'center' }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="2" y="7" width="16" height="10" rx="2" ry="2"></rect><line x1="22" y1="11" x2="22" y2="13"></line><line x1="6" y1="11" x2="10" y2="11"></line><line x1="6" y1="13" x2="12" y2="13"></line></svg>
               </span>
-              <span style={{ fontSize: '10.5pt', fontWeight: 700, color: '#ffffff', marginLeft: '6px' }}>Velocidade</span>
+              <span style={{ fontSize: '10.5pt', fontWeight: 700, color: '#ffffff', marginLeft: '6px' }}>{t('speedBadge')}</span>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '3px', background: 'rgba(0, 0, 0, 0.5)', border: '1px solid rgba(178, 210, 53, 0.25)', borderRadius: '10px', padding: '2.5mm 4mm', boxShadow: '0 4px 10px rgba(0,0,0,0.2)' }}>
               <span style={{ color: '#B2D235', display: 'flex', alignItems: 'center' }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>
               </span>
-              <span style={{ fontSize: '10.5pt', fontWeight: 700, color: '#ffffff', marginLeft: '6px' }}>Potência</span>
+              <span style={{ fontSize: '10.5pt', fontWeight: 700, color: '#ffffff', marginLeft: '6px' }}>{t('powerBadge')}</span>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '3px', background: 'rgba(0, 0, 0, 0.5)', border: '1px solid rgba(178, 210, 53, 0.25)', borderRadius: '10px', padding: '2.5mm 4mm', boxShadow: '0 4px 10px rgba(0,0,0,0.2)' }}>
               <span style={{ color: '#B2D235', display: 'flex', alignItems: 'center' }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path><line x1="3" y1="6" x2="21" y2="6"></line><path d="M16 10a4 4 0 0 1-8 0"></path></svg>
               </span>
-              <span style={{ fontSize: '10.5pt', fontWeight: 700, color: '#ffffff', marginLeft: '6px' }}>Autonomia</span>
+              <span style={{ fontSize: '10.5pt', fontWeight: 700, color: '#ffffff', marginLeft: '6px' }}>{t('rangeBadge')}</span>
             </div>
           </div>
 
@@ -216,7 +219,7 @@ export const ProposalPage6: React.FC<Props> = ({ data }) => {
             }}
           >
             <h3 style={{ margin: 0, fontSize: '15pt', fontWeight: 800, color: '#004D31', letterSpacing: '-0.3px' }}>
-              Informações técnicas
+              {t('technicalInfo')}
             </h3>
           </div>
 
@@ -235,7 +238,7 @@ export const ProposalPage6: React.FC<Props> = ({ data }) => {
               <tbody>
                 <tr style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.05)' }}>
                   <td style={{ backgroundColor: '#202329', color: '#ffffff', fontWeight: 600, fontSize: '9.5pt', padding: '3.5mm 5mm', width: '42%' }}>
-                    Fonte de energia
+                    {t('powerSource')}
                   </td>
                   <td style={{ backgroundColor: '#004D31', color: '#B2D235', fontWeight: 700, fontSize: '9.5pt', padding: '3.5mm 5mm' }}>
                     {powerSource}
@@ -243,7 +246,7 @@ export const ProposalPage6: React.FC<Props> = ({ data }) => {
                 </tr>
                 <tr style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.05)' }}>
                   <td style={{ backgroundColor: '#202329', color: '#ffffff', fontWeight: 600, fontSize: '9.5pt', padding: '3.5mm 5mm' }}>
-                    N de Conectores
+                    {t('connectors')}
                   </td>
                   <td style={{ backgroundColor: '#004D31', color: '#B2D235', fontWeight: 700, fontSize: '9.5pt', padding: '3.5mm 5mm' }}>
                     {connectors}
@@ -251,7 +254,7 @@ export const ProposalPage6: React.FC<Props> = ({ data }) => {
                 </tr>
                 <tr style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.05)' }}>
                   <td style={{ backgroundColor: '#202329', color: '#ffffff', fontWeight: 600, fontSize: '9.5pt', padding: '3.5mm 5mm' }}>
-                    Tipo do Conector
+                    {t('connectorType')}
                   </td>
                   <td style={{ backgroundColor: '#004D31', color: '#B2D235', fontWeight: 700, fontSize: '9.5pt', padding: '3.5mm 5mm' }}>
                     {connectorType}
@@ -259,7 +262,7 @@ export const ProposalPage6: React.FC<Props> = ({ data }) => {
                 </tr>
                 <tr style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.05)' }}>
                   <td style={{ backgroundColor: '#202329', color: '#ffffff', fontWeight: 600, fontSize: '9.5pt', padding: '3.5mm 5mm' }}>
-                    Comunicação
+                    {t('communication')}
                   </td>
                   <td style={{ backgroundColor: '#004D31', color: '#B2D235', fontWeight: 700, fontSize: '9pt', padding: '3.5mm 5mm', lineHeight: 1.3 }}>
                     {communication}
@@ -267,7 +270,7 @@ export const ProposalPage6: React.FC<Props> = ({ data }) => {
                 </tr>
                 <tr>
                   <td style={{ backgroundColor: '#202329', color: '#ffffff', fontWeight: 600, fontSize: '9.5pt', padding: '3.5mm 5mm' }}>
-                    Marca /Modelo
+                    {t('chargerModel')}
                   </td>
                   <td style={{ backgroundColor: '#004D31', color: '#B2D235', fontWeight: 700, fontSize: '9.5pt', padding: '3.5mm 5mm' }}>
                     {model}
@@ -280,7 +283,7 @@ export const ProposalPage6: React.FC<Props> = ({ data }) => {
           {/* LOWER CAPTION */}
           <div style={{ marginTop: '2.5mm', textAlign: 'center' }}>
             <p style={{ margin: 0, fontSize: '8pt', fontWeight: 700, color: '#4a5b54', lineHeight: 1.3 }}>
-              Consulte nossos profissionais para mais informações.
+              {t('consultProfessionals')}
             </p>
           </div>
         </div>
@@ -292,15 +295,15 @@ export const ProposalPage6: React.FC<Props> = ({ data }) => {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '3.5mm' }}>
           <div>
             <span style={{ fontSize: '56pt', fontWeight: 900, color: '#004D31', lineHeight: 0.9, letterSpacing: '-1.5px' }}>
-              Valor
+              {t('value')}
             </span>
           </div>
           <div>
             <div style={{ fontSize: '17pt', fontWeight: 800, color: '#1c1e21', letterSpacing: '-0.3px' }}>
-              Emissão: {emissionDateStr}
+              {t('emission')}: {emissionDateStr}
             </div>
             <div style={{ fontSize: '12pt', fontWeight: 500, color: '#7c868c', marginTop: '1.5mm' }}>
-              Proposta válida por {validityDays} dias.
+              {t('proposalValidity').replace('{days}', validityDays.toString())}
             </div>
           </div>
         </div>
@@ -321,7 +324,7 @@ export const ProposalPage6: React.FC<Props> = ({ data }) => {
             }}
           >
             <div style={{ fontSize: '10.5pt', fontWeight: 500, color: '#9ca3af' }}>
-              a partir de
+              {t('startingFrom')}
             </div>
             
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-baseline', marginTop: '1mm' }}>
@@ -332,8 +335,8 @@ export const ProposalPage6: React.FC<Props> = ({ data }) => {
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1.5mm', paddingTop: '1.5mm', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-              <span style={{ fontSize: '8pt', color: '#6b7280', fontWeight: 600 }}>+ Frete</span>
-              <span style={{ fontSize: '12.5pt', color: '#ffffff', fontWeight: 900, letterSpacing: '-0.3px' }}>à vista</span>
+              <span style={{ fontSize: '8pt', color: '#6b7280', fontWeight: 600 }}>{t('plusShipping')}</span>
+              <span style={{ fontSize: '12.5pt', color: '#ffffff', fontWeight: 900, letterSpacing: '-0.3px' }}>{t('cash')}</span>
             </div>
           </div>
 
@@ -350,18 +353,18 @@ export const ProposalPage6: React.FC<Props> = ({ data }) => {
             }}
           >
             <div style={{ fontSize: '10.5pt', fontWeight: 500, color: '#9ca3af' }}>
-              parcelado em até
+              {t('installmentUpTo')}
             </div>
             
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '1mm' }}>
               <span style={{ fontSize: '32pt', fontWeight: 900, color: '#ffffff', lineHeight: 1 }}>10x</span>
               <span style={{ fontSize: '9.5pt', fontWeight: 700, color: '#ffffff', lineHeight: 1.2, maxWidth: '90px' }}>
-                no cartão de crédito
+                {t('onCreditCard')}
               </span>
             </div>
 
             <div style={{ marginTop: '1.5mm', paddingTop: '1.5mm', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-              <span style={{ fontSize: '8pt', color: '#6b7280', fontWeight: 600 }}>+ Acréscimo de Juros</span>
+              <span style={{ fontSize: '8pt', color: '#6b7280', fontWeight: 600 }}>{t('plusInterest')}</span>
             </div>
           </div>
         </div>
@@ -378,10 +381,9 @@ export const ProposalPage6: React.FC<Props> = ({ data }) => {
         }}
       >
         <p style={{ margin: 0, fontSize: '8pt', color: '#6b7280', fontWeight: 500, lineHeight: 1.3 }}>
-          Instalação e infraestrutura elétrica são de responsabilidade do cliente.
+          {t('infrastructureDisclaimer')}
         </p>
       </div>
     </div>
   );
 };
-

@@ -17,7 +17,8 @@ import {
   CheckCircle2,
   ExternalLink,
   Loader2,
-  Cpu
+  Cpu,
+  Sliders
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
@@ -25,6 +26,7 @@ import { useRouter } from 'next/navigation';
 import { PDFService } from '@/lib/pdf-service';
 import { ProposalPage6 } from '@/components/ProposalPage6';
 import { ProposalCover } from '@/components/ProposalCover';
+import { useApp } from '@/context/AppContext';
 
 type ReorderPage = {
   id: string;
@@ -34,10 +36,10 @@ type ReorderPage = {
 };
 
 export default function Dashboard() {
+  const { profile, t } = useApp();
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [proposals, setProposals] = useState<any[]>([]);
-  const [profile, setProfile] = useState<any>(null);
   const router = useRouter();
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [currentProposal, setCurrentProposal] = useState<any>(null);
@@ -71,15 +73,6 @@ export default function Dashboard() {
         router.push('/login');
         return;
       }
-
-      // Fetch Profile
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .maybeSingle();
-      
-      setProfile(profileData || { full_name: user.email?.split('@')[0] });
 
       // Fetch Proposals
       const { data: proposalData } = await supabase
@@ -192,16 +185,16 @@ export default function Dashboard() {
   };
 
   const stats = [
-    { label: 'Total Propostas', value: proposals.length.toString(), icon: FileText, color: 'text-blue-600', bg: 'bg-blue-50' },
-    { label: 'Em Aberto', value: proposals.filter(p => p.status === 'Enviado').length.toString(), icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
-    { label: 'Concluídas', value: proposals.filter(p => p.status === 'Concluído').length.toString(), icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { label: 'Conversão', value: proposals.length > 0 ? `${Math.round((proposals.filter(p => p.status === 'Concluído').length / proposals.length) * 100)}%` : '0%', icon: TrendingUp, color: 'text-purple-600', bg: 'bg-purple-50' },
+    { label: t('totalProposals'), value: proposals.length.toString(), icon: FileText, color: 'text-blue-600 dark:text-blue-450', bg: 'bg-blue-50 dark:bg-blue-950/30' },
+    { label: t('openProposals'), value: proposals.filter(p => p.status === 'Enviado').length.toString(), icon: Clock, color: 'text-amber-600 dark:text-amber-455', bg: 'bg-amber-50 dark:bg-amber-950/30' },
+    { label: t('completedProposals'), value: proposals.filter(p => p.status === 'Concluído').length.toString(), icon: CheckCircle2, color: 'text-emerald-600 dark:text-emerald-450', bg: 'bg-emerald-50 dark:bg-emerald-950/30' },
+    { label: t('conversionRate'), value: proposals.length > 0 ? `${Math.round((proposals.filter(p => p.status === 'Concluído').length / proposals.length) * 100)}%` : '0%', icon: TrendingUp, color: 'text-purple-600 dark:text-purple-450', bg: 'bg-purple-50 dark:bg-purple-950/30' },
   ];
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50/50">
-        <Loader2 className="animate-spin text-primary" size={40} />
+      <div className="min-h-screen flex items-center justify-center bg-gray-50/50 dark:bg-slate-950">
+        <Loader2 className="animate-spin text-primary dark:text-accent" size={40} />
       </div>
     );
   }
@@ -243,7 +236,7 @@ export default function Dashboard() {
       initialPages.push({
         id: 'saas-cover',
         type: 'saas-cover',
-        label: 'Capa da Proposta (SaaS)',
+        label: t('stepClient') + ' (SaaS)',
         index: null
       });
 
@@ -252,7 +245,7 @@ export default function Dashboard() {
         initialPages.push({
           id: `template-${i}`,
           type: 'template',
-          label: `Página ${i + 1} do Modelo`,
+          label: `${t('templatePageLabel')} ${i + 1}`,
           index: i
         });
       }
@@ -261,7 +254,7 @@ export default function Dashboard() {
       initialPages.push({
         id: 'saas-page6',
         type: 'saas-page6',
-        label: 'Ficha Técnica e Comercial (SaaS)',
+        label: `${t('techSpecsPage6')} (SaaS)`,
         index: null
       });
 
@@ -270,7 +263,7 @@ export default function Dashboard() {
         initialPages.push({
           id: `template-${i}`,
           type: 'template',
-          label: `Página ${i + 1} do Modelo`,
+          label: `${t('templatePageLabel')} ${i + 1}`,
           index: i
         });
       }
@@ -330,8 +323,8 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="flex min-h-screen bg-gray-50/50">
-      {/* Hidden renderer for PDF capturing */}
+    <div className="flex min-h-screen bg-gray-50/50 dark:bg-slate-950 transition-colors duration-300">
+      {/* Hidden renderer for PDF capturing (ALWAYS light/white background as user wants) */}
       <div style={{ position: 'absolute', left: '-9999px', top: '-9999px' }}>
         {currentProposal && (
           <>
@@ -342,40 +335,41 @@ export default function Dashboard() {
       </div>
 
       {/* Sidebar */}
-      <aside className="w-64 bg-white border-r border-gray-200 flex flex-col fixed h-full z-20">
+      <aside className="w-64 bg-white dark:bg-slate-900 border-r border-gray-200 dark:border-slate-800 flex flex-col fixed h-full z-20 transition-colors duration-300">
         <div className="p-6">
           <div className="flex items-center gap-2 mb-8">
             <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
               <span className="text-white font-bold text-xl">P</span>
             </div>
-            <span className="text-xl font-bold tracking-tight">ProposalPro</span>
+            <span className="text-xl font-bold tracking-tight text-gray-900 dark:text-white">ProposalPro</span>
           </div>
 
           <nav className="space-y-1">
-            <NavItem icon={LayoutDashboard} label="Dashboard" href="/" active />
-            <NavItem icon={FileText} label="Propostas" href="#" />
-            <NavItem icon={Users} label="Clientes" href="#" />
-            <NavItem icon={Cpu} label="Carregadores" href="/models" />
-            <NavItem icon={Settings} label="Templates" href="/templates" />
+            <NavItem icon={LayoutDashboard} label={t('dashboard')} href="/" active />
+            <NavItem icon={FileText} label={t('proposals')} href="#" />
+            <NavItem icon={Users} label={t('clients')} href="#" />
+            <NavItem icon={Cpu} label={t('chargers')} href="/models" />
+            <NavItem icon={Sliders} label={t('templates')} href="/templates" />
+            <NavItem icon={Settings} label={t('settings')} href="/settings" />
           </nav>
         </div>
 
-        <div className="mt-auto p-6 border-t border-gray-200">
+        <div className="mt-auto p-6 border-t border-gray-200 dark:border-slate-800">
           <div className="flex items-center gap-3 mb-6 px-2">
-            <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-500">
-              {profile?.full_name?.substring(0, 2).toUpperCase()}
+            <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-slate-850 flex items-center justify-center text-xs font-bold text-gray-500 dark:text-gray-400">
+              {profile?.full_name?.substring(0, 2).toUpperCase() || 'US'}
             </div>
             <div className="overflow-hidden">
-              <p className="text-sm font-bold text-gray-900 truncate">{profile?.full_name}</p>
-              <p className="text-xs text-gray-500 truncate">Plano Pro</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{profile?.full_name}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">Plano Pro</p>
             </div>
           </div>
           <button 
             onClick={handleLogout}
-            className="flex items-center gap-3 w-full px-2 py-2 text-gray-500 hover:text-red-600 transition-colors"
+            className="flex items-center gap-3 w-full px-2 py-2 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 transition-colors"
           >
             <LogOut size={20} />
-            <span className="font-medium">Sair</span>
+            <span className="font-medium">{t('logout')}</span>
           </button>
         </div>
       </aside>
@@ -383,26 +377,26 @@ export default function Dashboard() {
       {/* Main Content */}
       <main className="flex-1 flex flex-col ml-64 min-h-screen">
         {/* Header */}
-        <header className="h-16 bg-white/80 backdrop-blur-md border-b border-gray-200 px-8 flex items-center justify-between sticky top-0 z-10">
-          <h1 className="text-xl font-semibold text-gray-800">Dashboard</h1>
+        <header className="h-16 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-gray-200 dark:border-slate-800 px-8 flex items-center justify-between sticky top-0 z-10 transition-colors duration-300">
+          <h1 className="text-xl font-semibold text-gray-800 dark:text-white">{t('dashboard')}</h1>
           
           <div className="flex items-center gap-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
               <input 
                 type="text" 
-                placeholder="Pesquisar..." 
-                className="pl-10 pr-4 py-2 border border-gray-200 rounded-full bg-gray-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/10 w-64 text-sm transition-all"
+                placeholder={t('search')} 
+                className="pl-10 pr-4 py-2 border border-gray-200 dark:border-slate-800 rounded-full bg-gray-50/50 dark:bg-slate-950 text-gray-950 dark:text-white focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/10 w-64 text-sm transition-all"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
             <button 
               onClick={() => router.push('/proposals/new')}
-              className="bg-primary text-white px-4 py-2 rounded-full font-bold flex items-center gap-2 hover:opacity-90 transition-all shadow-sm active:scale-95"
+              className="bg-primary text-white px-4 py-2 rounded-full font-bold flex items-center gap-2 hover:opacity-90 transition-all shadow-sm active:scale-95 text-sm"
             >
               <Plus size={20} />
-              Nova Proposta
+              {t('newProposal')}
             </button>
           </div>
         </header>
@@ -417,13 +411,13 @@ export default function Dashboard() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.1 }}
-                className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow"
+                className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm hover:shadow-md transition-all"
               >
                 <div className={`${stat.bg} ${stat.color} w-12 h-12 rounded-xl flex items-center justify-center mb-4`}>
                   <stat.icon size={24} />
                 </div>
-                <p className="text-gray-500 text-sm font-medium">{stat.label}</p>
-                <h3 className="text-2xl font-bold mt-1">{stat.value}</h3>
+                <p className="text-gray-500 dark:text-slate-400 text-sm font-medium">{stat.label}</p>
+                <h3 className="text-2xl font-bold mt-1 text-gray-900 dark:text-white">{stat.value}</h3>
               </motion.div>
             ))}
           </div>
@@ -433,39 +427,39 @@ export default function Dashboard() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.4 }}
-            className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden"
+            className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm overflow-hidden"
           >
-            <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-              <h2 className="text-lg font-bold">Propostas Recentes</h2>
-              <button className="text-primary text-sm font-bold hover:underline">Ver todas</button>
+            <div className="p-6 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white">{t('recentProposals')}</h2>
+              <button className="text-primary dark:text-accent text-sm font-bold hover:underline">{t('viewAll')}</button>
             </div>
             
             <div className="overflow-x-auto">
               <table className="w-full text-left">
                 <thead>
-                  <tr className="bg-gray-50/50 text-gray-500 text-xs font-bold uppercase tracking-wider">
-                    <th className="px-6 py-4">Cliente</th>
-                    <th className="px-6 py-4">Título</th>
-                    <th className="px-6 py-4">Data</th>
-                    <th className="px-6 py-4">Status</th>
-                    <th className="px-6 py-4 text-right">Ações</th>
+                  <tr className="bg-gray-50/50 dark:bg-slate-950/50 text-gray-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">
+                    <th className="px-6 py-4">{t('clientName')}</th>
+                    <th className="px-6 py-4">{t('title')}</th>
+                    <th className="px-6 py-4">{t('date')}</th>
+                    <th className="px-6 py-4">{t('status')}</th>
+                    <th className="px-6 py-4 text-right">{t('actions')}</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
                   {proposals.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
-                        Nenhuma proposta encontrada. Clique em "Nova Proposta" para começar.
+                      <td colSpan={5} className="px-6 py-12 text-center text-gray-500 dark:text-slate-400">
+                        {t('emptyProposals')}
                       </td>
                     </tr>
                   ) : (
                     proposals.map((prop) => (
-                      <tr key={prop.id} className="hover:bg-gray-50/50 transition-colors group">
+                      <tr key={prop.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-950/20 transition-colors group">
                         <td className="px-6 py-4">
-                          <div className="font-semibold text-gray-900">{prop.client?.name || 'Cliente s/ nome'}</div>
+                          <div className="font-semibold text-gray-900 dark:text-white">{prop.client?.name || 'Cliente s/ nome'}</div>
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-600">{prop.title}</td>
-                        <td className="px-6 py-4 text-sm text-gray-500">
+                        <td className="px-6 py-4 text-sm text-gray-600 dark:text-slate-300">{prop.title}</td>
+                        <td className="px-6 py-4 text-sm text-gray-500 dark:text-slate-400">
                           {new Date(prop.created_at).toLocaleDateString()}
                         </td>
                         <td className="px-6 py-4">
@@ -476,23 +470,23 @@ export default function Dashboard() {
                             <button 
                               onClick={() => handleView(prop)}
                               disabled={viewingId === prop.id || downloadingId === prop.id}
-                              title="Visualizar" 
-                              className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-all disabled:opacity-30"
+                              title={t('view')} 
+                              className="p-2 text-gray-400 hover:text-primary dark:hover:text-accent hover:bg-primary/5 dark:hover:bg-accent/5 rounded-lg transition-all disabled:opacity-30"
                             >
                               {viewingId === prop.id ? <Loader2 className="animate-spin" size={18} /> : <ExternalLink size={18} />}
                             </button>
                             <button 
                               onClick={() => handleDownload(prop)}
                               disabled={downloadingId === prop.id || viewingId === prop.id}
-                              title="Baixar" 
-                              className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-all disabled:opacity-30"
+                              title={t('download')} 
+                              className="p-2 text-gray-400 hover:text-primary dark:hover:text-accent hover:bg-primary/5 dark:hover:bg-accent/5 rounded-lg transition-all disabled:opacity-30"
                             >
                               {downloadingId === prop.id ? <Loader2 className="animate-spin" size={18} /> : <Download size={18} />}
                             </button>
                             <button 
                               onClick={() => handleDuplicate(prop)}
-                              title="Duplicar" 
-                              className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-all"
+                              title={t('duplicate')} 
+                              className="p-2 text-gray-400 hover:text-primary dark:hover:text-accent hover:bg-primary/5 dark:hover:bg-accent/5 rounded-lg transition-all"
                             >
                               <Copy size={18} />
                             </button>
@@ -502,22 +496,22 @@ export default function Dashboard() {
                                   e.stopPropagation();
                                   setActiveMenuId(activeMenuId === prop.id ? null : prop.id);
                                 }}
-                                title="Mais Opções"
-                                className="p-2 text-gray-400 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-all"
+                                title={t('actions')}
+                                className="p-2 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-all"
                               >
                                 <MoreVertical size={18} />
                               </button>
                               
                               {activeMenuId === prop.id && (
-                                <div className="absolute right-0 mt-1 w-32 bg-white border border-gray-100 rounded-xl shadow-lg z-30 py-1 text-left">
+                                <div className="absolute right-0 mt-1 w-32 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl shadow-lg z-30 py-1 text-left">
                                   <button
                                     onClick={() => {
                                       handleDelete(prop.id);
                                       setActiveMenuId(null);
                                     }}
-                                    className="w-full text-left px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2"
+                                    className="w-full text-left px-4 py-2 text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors flex items-center gap-2"
                                   >
-                                    Excluir
+                                    {t('delete')}
                                   </button>
                                 </div>
                               )}
@@ -542,23 +536,23 @@ export default function Dashboard() {
               initial={{ opacity: 0, scale: 0.95, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="bg-white rounded-3xl max-w-lg w-full shadow-2xl overflow-hidden border border-gray-100 flex flex-col max-h-[85vh]"
+              className="bg-white dark:bg-slate-900 rounded-3xl max-w-lg w-full shadow-2xl overflow-hidden border border-gray-100 dark:border-slate-800 flex flex-col max-h-[85vh] transition-colors duration-300"
             >
               {/* Modal Header */}
-              <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+              <div className="p-6 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between bg-gray-50/50 dark:bg-slate-950/50">
                 <div>
-                  <h3 className="text-lg font-bold text-gray-900">
-                    Organizar Páginas do PDF
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                    {t('organizePdfPages')}
                   </h3>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Defina a ordem em que as páginas aparecerão no PDF final.
+                  <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">
+                    {t('organizePdfHelp')}
                   </p>
                 </div>
                 <button 
                   onClick={() => setIsReorderModalOpen(false)}
-                  className="text-gray-400 hover:text-gray-700 font-bold text-sm"
+                  className="text-gray-400 hover:text-gray-750 dark:hover:text-white font-bold text-sm"
                 >
-                  Fechar
+                  {t('close')}
                 </button>
               </div>
 
@@ -566,8 +560,8 @@ export default function Dashboard() {
               <div className="p-6 overflow-y-auto flex-1 space-y-4">
                 {loadingPages ? (
                   <div className="flex flex-col items-center justify-center py-16 gap-3">
-                    <Loader2 className="animate-spin text-primary" size={32} />
-                    <span className="text-xs text-gray-500 font-medium">Analisando páginas do modelo...</span>
+                    <Loader2 className="animate-spin text-primary dark:text-accent" size={32} />
+                    <span className="text-xs text-gray-500 dark:text-slate-400 font-medium">{t('loadingTemplatePages')}</span>
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -580,29 +574,29 @@ export default function Dashboard() {
                           transition={{ type: 'spring', stiffness: 300, damping: 30 }}
                           className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${
                             isSaas 
-                              ? 'bg-emerald-50/70 border-emerald-200/60 shadow-sm shadow-emerald-100/50' 
-                              : 'bg-white border-gray-100 hover:border-gray-200'
+                              ? 'bg-emerald-50/70 border-emerald-200/60 dark:bg-emerald-950/20 dark:border-emerald-900/60 shadow-sm shadow-emerald-100/50 dark:shadow-none' 
+                              : 'bg-white dark:bg-slate-950 border-gray-100 dark:border-slate-800 hover:border-gray-200 dark:hover:border-slate-705'
                           }`}
                         >
                           <div className="flex items-center gap-3">
                             <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                              isSaas ? 'bg-emerald-500/10 text-emerald-600' : 'bg-gray-100 text-gray-500'
+                              isSaas ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-gray-100 dark:bg-slate-900 text-gray-500 dark:text-slate-400'
                             }`}>
                               <span className="text-xs font-bold">{index + 1}</span>
                             </div>
                             
                             <div>
-                              <span className={`text-sm font-bold block ${isSaas ? 'text-emerald-950' : 'text-gray-800'}`}>
+                              <span className={`text-sm font-bold block ${isSaas ? 'text-emerald-950 dark:text-emerald-250' : 'text-gray-800 dark:text-slate-200'}`}>
                                 {page.label}
                               </span>
                               <div className="mt-1">
                                 {isSaas ? (
-                                  <span className="bg-emerald-500/20 text-emerald-800 border border-emerald-500/10 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider">
-                                    Página criada pelo SaaS
+                                  <span className="bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-500/10 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider">
+                                    {t('saasPageLabel')}
                                   </span>
                                 ) : (
-                                  <span className="bg-gray-100 text-gray-600 border border-gray-200/50 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider">
-                                    Página do Modelo
+                                  <span className="bg-gray-100 dark:bg-slate-900 text-gray-600 dark:text-slate-400 border border-gray-200/50 dark:border-slate-800 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider">
+                                    {t('templatePageLabel')}
                                   </span>
                                 )}
                               </div>
@@ -615,7 +609,7 @@ export default function Dashboard() {
                               type="button"
                               disabled={index === 0}
                               onClick={() => movePage(index, 'up')}
-                              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-20 transition-all"
+                              className="p-1.5 rounded-lg text-gray-400 dark:text-slate-500 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800 disabled:opacity-20 transition-all"
                               title="Mover para cima"
                             >
                               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
@@ -624,7 +618,7 @@ export default function Dashboard() {
                               type="button"
                               disabled={index === reorderPages.length - 1}
                               onClick={() => movePage(index, 'down')}
-                              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-20 transition-all"
+                              className="p-1.5 rounded-lg text-gray-400 dark:text-slate-500 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800 disabled:opacity-20 transition-all"
                               title="Mover para baixo"
                             >
                               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
@@ -638,21 +632,21 @@ export default function Dashboard() {
               </div>
 
               {/* Modal Footer */}
-              <div className="p-6 border-t border-gray-100 bg-gray-50/50 flex items-center justify-end gap-3">
+              <div className="p-6 border-t border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-950/50 flex items-center justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => setIsReorderModalOpen(false)}
-                  className="px-4 py-2 text-sm font-bold text-gray-500 hover:text-gray-900 transition-colors"
+                  className="px-4 py-2 text-sm font-bold text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white transition-colors"
                 >
-                  Cancelar
+                  {t('cancel')}
                 </button>
                 <button
                   type="button"
                   disabled={loadingPages}
                   onClick={handleConfirmDownload}
-                  className="bg-primary text-white px-6 py-2.5 rounded-xl font-bold hover:opacity-90 active:scale-[0.98] transition-all flex items-center gap-2"
+                  className="bg-primary text-white px-6 py-2.5 rounded-xl font-bold hover:opacity-90 active:scale-[0.98] transition-all flex items-center gap-2 text-sm shadow-sm"
                 >
-                  Confirmar e Baixar
+                  {t('confirmAndDownload')}
                 </button>
               </div>
             </motion.div>
@@ -669,23 +663,23 @@ function NavItem({ icon: Icon, label, active = false, href = "#" }: { icon: any,
       href={href} 
       className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${
         active 
-          ? 'bg-primary/10 text-primary shadow-sm shadow-primary/5' 
-          : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+          ? 'bg-primary/10 text-primary dark:bg-accent/10 dark:text-accent shadow-sm' 
+          : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-850 hover:text-gray-900 dark:hover:text-white'
       }`}
     >
       <Icon size={20} />
       <span>{label}</span>
-      {active && <motion.div layoutId="activeNav" className="ml-auto w-1.5 h-1.5 rounded-full bg-primary" />}
+      {active && <motion.div layoutId="activeNav" className="ml-auto w-1.5 h-1.5 rounded-full bg-primary dark:bg-accent" />}
     </a>
   );
 }
 
 function StatusBadge({ status }: { status: string }) {
   const styles: any = {
-    'Enviado': 'bg-blue-50 text-blue-700 border-blue-100',
-    'Concluído': 'bg-emerald-50 text-emerald-700 border-emerald-100',
-    'Rascunho': 'bg-gray-100 text-gray-700 border-gray-200',
-    'Vencido': 'bg-red-50 text-red-700 border-red-100',
+    'Enviado': 'bg-blue-50 text-blue-700 border-blue-100 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-900/40',
+    'Concluído': 'bg-emerald-50 text-emerald-700 border-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900/40',
+    'Rascunho': 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700',
+    'Vencido': 'bg-red-50 text-red-700 border-red-100 dark:bg-red-950/30 dark:text-red-400 dark:border-red-900/40',
   };
 
   return (

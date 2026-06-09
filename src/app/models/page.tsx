@@ -20,8 +20,10 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
+import { useApp } from '@/context/AppContext';
 
 export default function ModelsPage() {
+  const { profile, t } = useApp();
   const [models, setModels] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -44,7 +46,6 @@ export default function ModelsPage() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   
   const [userId, setUserId] = useState<string | null>(null);
-  const [profile, setProfile] = useState<any>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -61,14 +62,6 @@ export default function ModelsPage() {
         return;
       }
       setUserId(user.id);
-
-      // Fetch Profile
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .maybeSingle();
-      setProfile(profileData || { full_name: user.email?.split('@')[0] });
 
       // Fetch models (both global and own user models)
       const { data: modelsData, error } = await supabase
@@ -225,42 +218,43 @@ export default function ModelsPage() {
   );
 
   return (
-    <div className="flex min-h-screen bg-gray-50/50">
+    <div className="flex min-h-screen bg-gray-50/50 dark:bg-slate-950 transition-colors duration-300">
       {/* Sidebar */}
-      <aside className="w-64 bg-white border-r border-gray-200 flex flex-col fixed h-full z-20">
+      <aside className="w-64 bg-white dark:bg-slate-900 border-r border-gray-200 dark:border-slate-800 flex flex-col fixed h-full z-20 transition-colors duration-300">
         <div className="p-6">
           <div className="flex items-center gap-2 mb-8">
             <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
               <span className="text-white font-bold text-xl">P</span>
             </div>
-            <span className="text-xl font-bold tracking-tight">ProposalPro</span>
+            <span className="text-xl font-bold tracking-tight text-gray-900 dark:text-white">ProposalPro</span>
           </div>
 
           <nav className="space-y-1">
-            <NavItem icon={LayoutDashboard} label="Dashboard" href="/" />
-            <NavItem icon={FileText} label="Propostas" href="#" />
-            <NavItem icon={Users} label="Clientes" href="#" />
-            <NavItem icon={Cpu} label="Carregadores" active href="/models" />
-            <NavItem icon={Settings} label="Templates" href="/templates" />
+            <NavItem icon={LayoutDashboard} label={t('dashboard')} href="/" />
+            <NavItem icon={FileText} label={t('proposals')} href="#" />
+            <NavItem icon={Users} label={t('clients')} href="#" />
+            <NavItem icon={Cpu} label={t('chargers')} active href="/models" />
+            <NavItem icon={Sliders} label={t('templates')} href="/templates" />
+            <NavItem icon={Settings} label={t('settings')} href="/settings" />
           </nav>
         </div>
 
-        <div className="mt-auto p-6 border-t border-gray-200">
+        <div className="mt-auto p-6 border-t border-gray-200 dark:border-slate-800">
           <div className="flex items-center gap-3 mb-6 px-2">
-            <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-500">
+            <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-slate-850 flex items-center justify-center text-xs font-bold text-gray-500 dark:text-gray-400">
               {profile?.full_name?.substring(0, 2).toUpperCase() || 'US'}
             </div>
             <div className="overflow-hidden">
-              <p className="text-sm font-bold text-gray-900 truncate">{profile?.full_name}</p>
-              <p className="text-xs text-gray-500 truncate">Plano Pro</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{profile?.full_name}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">Plano Pro</p>
             </div>
           </div>
           <button 
             onClick={handleLogout}
-            className="flex items-center gap-3 w-full px-2 py-2 text-gray-500 hover:text-red-600 transition-colors"
+            className="flex items-center gap-3 w-full px-2 py-2 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 transition-colors"
           >
             <LogOut size={20} />
-            <span className="font-medium">Sair</span>
+            <span className="font-medium">{t('logout')}</span>
           </button>
         </div>
       </aside>
@@ -268,12 +262,12 @@ export default function ModelsPage() {
       {/* Main Content */}
       <main className="flex-1 flex flex-col ml-64 min-h-screen">
         {/* Header */}
-        <header className="h-16 bg-white/80 backdrop-blur-md border-b border-gray-200 px-8 flex items-center justify-between sticky top-0 z-10">
+        <header className="h-16 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-gray-200 dark:border-slate-800 px-8 flex items-center justify-between sticky top-0 z-10 transition-colors duration-300">
           <div className="flex items-center gap-4">
-            <button onClick={() => router.push('/')} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+            <button onClick={() => router.push('/')} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors text-gray-500 dark:text-gray-400">
               <ArrowLeft size={20} />
             </button>
-            <h1 className="text-xl font-bold text-gray-800">Modelos de Carregadores</h1>
+            <h1 className="text-xl font-bold text-gray-800 dark:text-white">{t('chargers')}</h1>
           </div>
           
           <div className="flex items-center gap-4">
@@ -281,18 +275,18 @@ export default function ModelsPage() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
               <input 
                 type="text" 
-                placeholder="Pesquisar modelos..." 
-                className="pl-10 pr-4 py-2 border border-gray-200 rounded-full bg-gray-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/10 w-64 text-sm transition-all"
+                placeholder={t('searchModels')} 
+                className="pl-10 pr-4 py-2 border border-gray-200 dark:border-slate-800 rounded-full bg-gray-50/50 dark:bg-slate-950 text-gray-950 dark:text-white focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/10 w-64 text-sm transition-all"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
             <button 
               onClick={handleOpenAddModal}
-              className="bg-primary text-white px-4 py-2 rounded-full font-bold flex items-center gap-2 hover:opacity-90 transition-all shadow-sm active:scale-95"
+              className="bg-primary text-white px-4 py-2 rounded-full font-bold flex items-center gap-2 hover:opacity-90 transition-all shadow-sm active:scale-95 text-sm"
             >
               <Plus size={20} />
-              Cadastrar Modelo
+              {t('addCharger')}
             </button>
           </div>
         </header>
@@ -301,13 +295,12 @@ export default function ModelsPage() {
         <div className="p-8 space-y-8 max-w-7xl mx-auto w-full">
           {loading ? (
             <div className="flex justify-center py-20">
-              <Loader2 className="animate-spin text-primary" size={40} />
+              <Loader2 className="animate-spin text-primary dark:text-accent" size={40} />
             </div>
           ) : filteredModels.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border border-gray-100 shadow-sm">
-              <Cpu className="text-gray-200 mb-4" size={64} />
-              <h2 className="text-xl font-bold text-gray-900">Nenhum carregador encontrado</h2>
-              <p className="text-gray-500 mt-2">Cadastre o seu primeiro modelo personalizado de carregador.</p>
+            <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-slate-900 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm transition-colors">
+              <Cpu className="text-gray-200 dark:text-slate-750 mb-4" size={64} />
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">{t('noChargers')}</h2>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -318,18 +311,18 @@ export default function ModelsPage() {
                     key={m.id}
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow relative"
+                    className="bg-white dark:bg-slate-900 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-shadow relative"
                   >
                     {/* Header Card - Eco Background style with charger graphics */}
                     <div className="p-6 bg-gradient-to-br from-green-950 to-green-900 text-white relative h-56 flex flex-col justify-between overflow-hidden">
                       <div className="absolute top-4 right-4 z-10">
                         {isGlobal ? (
                           <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full text-[9px] font-bold">
-                            SISTEMA
+                            {t('systemModel')}
                           </span>
                         ) : (
                           <span className="bg-primary/50 text-accent border border-accent/30 px-2 py-0.5 rounded-full text-[9px] font-bold">
-                            PERSONALIZADO
+                            {t('customModel')}
                           </span>
                         )}
                       </div>
@@ -345,7 +338,7 @@ export default function ModelsPage() {
                         </div>
                         
                         <div className="mt-auto">
-                          <span className="text-[10px] text-gray-400 block">a partir de</span>
+                          <span className="text-[10px] text-gray-400 block">{t('startingFrom')}</span>
                           <span className="text-xl font-black text-white">
                             R$ {m.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                           </span>
@@ -380,33 +373,33 @@ export default function ModelsPage() {
                     {/* Specs Details */}
                     <div className="p-6 flex-1 flex flex-col justify-between space-y-4">
                       <div className="space-y-2">
-                        <SpecLine label="Fonte de Energia" value={m.power_source} />
-                        <SpecLine label="Nº Conectores" value={m.connectors} />
-                        <SpecLine label="Tipo Conector" value={m.connector_type} />
-                        <SpecLine label="Comunicação" value={m.communication} />
+                        <SpecLine label={t('powerSource')} value={m.power_source} />
+                        <SpecLine label={t('connectors')} value={m.connectors} />
+                        <SpecLine label={t('connectorType')} value={m.connector_type} />
+                        <SpecLine label={t('communication')} value={m.communication} />
                       </div>
 
                       {/* Actions */}
-                      <div className="pt-4 border-t border-gray-100 flex items-center justify-end gap-2">
+                      <div className="pt-4 border-t border-gray-100 dark:border-slate-800 flex items-center justify-end gap-2">
                         {!isGlobal ? (
                           <>
                             <button 
                               onClick={() => handleOpenEditModal(m)}
-                              className="p-2 text-gray-400 hover:text-primary hover:bg-primary/5 rounded-xl transition-all"
-                              title="Editar"
+                              className="p-2 text-gray-400 hover:text-primary dark:hover:text-accent hover:bg-primary/5 dark:hover:bg-accent/5 rounded-xl transition-all"
+                              title={t('save')}
                             >
                               <Edit3 size={18} />
                             </button>
                             <button 
                               onClick={() => handleDelete(m.id, isGlobal)}
-                              className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
-                              title="Excluir"
+                              className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-xl transition-all"
+                              title={t('delete')}
                             >
                               <Trash2 size={18} />
                             </button>
                           </>
                         ) : (
-                          <span className="text-xs text-gray-400 font-medium italic">Modelo protegido</span>
+                          <span className="text-xs text-gray-400 dark:text-slate-500 font-medium italic">{t('protectedModel')}</span>
                         )}
                       </div>
                     </div>
@@ -426,18 +419,18 @@ export default function ModelsPage() {
               initial={{ opacity: 0, scale: 0.95, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="bg-white rounded-3xl max-w-xl w-full shadow-2xl overflow-hidden border border-gray-100 flex flex-col max-h-[90vh]"
+              className="bg-white dark:bg-slate-900 rounded-3xl max-w-xl w-full shadow-2xl overflow-hidden border border-gray-100 dark:border-slate-800 flex flex-col max-h-[90vh] transition-colors duration-300"
             >
               {/* Modal Header */}
-              <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-                <h3 className="text-lg font-bold text-gray-900">
-                  {editingId ? 'Editar Modelo de Carregador' : 'Novo Modelo de Carregador'}
+              <div className="p-6 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                  {editingId ? t('editCharger') : t('addCharger')}
                 </h3>
                 <button 
                   onClick={() => setIsModalOpen(false)}
-                  className="text-gray-400 hover:text-gray-700 font-bold"
+                  className="text-gray-400 hover:text-gray-700 dark:hover:text-white font-bold"
                 >
-                  Fechar
+                  {t('close')}
                 </button>
               </div>
 
@@ -445,104 +438,104 @@ export default function ModelsPage() {
               <form onSubmit={handleSave} className="p-6 space-y-4 overflow-y-auto flex-1">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5 col-span-2">
-                    <label className="text-xs font-bold text-gray-400 uppercase">Nome de Exibição (ex: Eco SuperFast)</label>
+                    <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase">{t('chargerName')}</label>
                     <input 
                       type="text" 
                       required
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl border border-gray-100 bg-gray-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/10 transition-all text-sm"
+                      className="w-full px-4 py-2.5 rounded-xl border border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-950 text-gray-950 dark:text-white focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/10 transition-all text-sm"
                       placeholder="Eco SuperFast"
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-gray-400 uppercase">Potência (ex: 40kW)</label>
+                    <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase">{t('chargerPower')}</label>
                     <input 
                       type="text" 
                       required
                       value={power}
                       onChange={(e) => setPower(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl border border-gray-100 bg-gray-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/10 transition-all text-sm"
+                      className="w-full px-4 py-2.5 rounded-xl border border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-950 text-gray-950 dark:text-white focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/10 transition-all text-sm"
                       placeholder="40kW"
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-gray-400 uppercase">Valor de Venda (R$)</label>
+                    <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase">{t('chargerPrice')}</label>
                     <input 
                       type="number" 
                       step="0.01"
                       required
                       value={price}
                       onChange={(e) => setPrice(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl border border-gray-100 bg-gray-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/10 transition-all text-sm"
+                      className="w-full px-4 py-2.5 rounded-xl border border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-950 text-gray-950 dark:text-white focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/10 transition-all text-sm"
                       placeholder="30966.36"
                     />
                   </div>
 
                   <div className="space-y-1.5 col-span-2">
-                    <label className="text-xs font-bold text-gray-400 uppercase">Marca / Modelo Técnico</label>
+                    <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase">{t('chargerModel')}</label>
                     <input 
                       type="text" 
                       required
                       value={modelName}
                       onChange={(e) => setModelName(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl border border-gray-100 bg-gray-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/10 transition-all text-sm"
+                      className="w-full px-4 py-2.5 rounded-xl border border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-950 text-gray-950 dark:text-white focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/10 transition-all text-sm"
                       placeholder="Rise Superfast"
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-gray-400 uppercase">Fonte de Energia</label>
+                    <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase">{t('powerSource')}</label>
                     <input 
                       type="text" 
                       required
                       value={powerSource}
                       onChange={(e) => setPowerSource(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl border border-gray-100 bg-gray-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/10 transition-all text-sm"
+                      className="w-full px-4 py-2.5 rounded-xl border border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-950 text-gray-950 dark:text-white focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/10 transition-all text-sm"
                       placeholder="3F+N+T"
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-gray-400 uppercase">Nº de Conectores</label>
+                    <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase">{t('connectors')}</label>
                     <input 
                       type="number" 
                       required
                       value={connectors}
                       onChange={(e) => setConnectors(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl border border-gray-100 bg-gray-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/10 transition-all text-sm"
+                      className="w-full px-4 py-2.5 rounded-xl border border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-950 text-gray-950 dark:text-white focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/10 transition-all text-sm"
                       placeholder="1"
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-gray-400 uppercase">Tipo do Conector</label>
+                    <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase">{t('connectorType')}</label>
                     <input 
                       type="text" 
                       required
                       value={connectorType}
                       onChange={(e) => setConnectorType(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl border border-gray-100 bg-gray-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/10 transition-all text-sm"
+                      className="w-full px-4 py-2.5 rounded-xl border border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-950 text-gray-950 dark:text-white focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/10 transition-all text-sm"
                       placeholder="CCS2"
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-gray-400 uppercase">Comunicação</label>
+                    <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase">{t('communication')}</label>
                     <input 
                       type="text" 
                       required
                       value={communication}
                       onChange={(e) => setCommunication(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl border border-gray-100 bg-gray-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/10 transition-all text-sm"
+                      className="w-full px-4 py-2.5 rounded-xl border border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-950 text-gray-950 dark:text-white focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/10 transition-all text-sm"
                       placeholder="Bluetooth/Wi-Fi/RFID"
                     />
                   </div>
 
-                  <div className="space-y-1.5 col-span-2 border-t border-gray-50 pt-3 mt-1">
-                    <label className="text-xs font-bold text-gray-400 uppercase">Foto do Carregador (PNG ou JPG)</label>
+                  <div className="space-y-1.5 col-span-2 border-t border-gray-100 dark:border-slate-800 pt-3 mt-1">
+                    <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase">{t('chargerPhoto')}</label>
                     <div className="flex items-center gap-4">
                       <input 
                         type="file" 
@@ -551,15 +544,15 @@ export default function ModelsPage() {
                           const file = e.target.files?.[0];
                           if (file) setImageFile(file);
                         }}
-                        className="flex-1 px-4 py-2 rounded-xl border border-gray-100 bg-gray-50/50 focus:bg-white focus:outline-none text-xs cursor-pointer"
+                        className="flex-1 px-4 py-2 rounded-xl border border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-950 text-gray-950 dark:text-white focus:bg-white focus:outline-none text-xs cursor-pointer"
                       />
                       {imageUrl && !imageFile && (
-                        <div className="w-10 h-10 rounded-lg overflow-hidden border border-gray-100 flex-shrink-0 flex items-center justify-center bg-gray-50">
+                        <div className="w-10 h-10 rounded-lg overflow-hidden border border-gray-100 dark:border-slate-800 flex-shrink-0 flex items-center justify-center bg-gray-50 dark:bg-slate-950">
                           <img src={imageUrl} alt="Preview" className="w-full h-full object-contain" />
                         </div>
                       )}
                       {imageFile && (
-                        <span className="text-[10px] font-bold text-primary truncate max-w-[150px] bg-primary/5 px-2.5 py-1 rounded-md">
+                        <span className="text-[10px] font-bold text-primary dark:text-accent truncate max-w-[150px] bg-primary/5 dark:bg-accent/5 px-2.5 py-1 rounded-md">
                           {imageFile.name} (Pronto)
                         </span>
                       )}
@@ -568,21 +561,21 @@ export default function ModelsPage() {
                 </div>
 
                 {/* Submit button */}
-                <div className="pt-4 border-t border-gray-100 flex items-center justify-end gap-3">
+                <div className="pt-4 border-t border-gray-100 dark:border-slate-800 flex items-center justify-end gap-3">
                   <button 
                     type="button"
                     onClick={() => setIsModalOpen(false)}
-                    className="px-4 py-2 text-sm font-bold text-gray-500 hover:text-gray-900 transition-colors"
+                    className="px-4 py-2 text-sm font-bold text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white transition-colors"
                   >
-                    Cancelar
+                    {t('cancel')}
                   </button>
                   <button 
                     type="submit"
                     disabled={saving}
-                    className="bg-primary text-white px-6 py-2.5 rounded-xl font-bold hover:opacity-90 active:scale-[0.98] transition-all flex items-center gap-2"
+                    className="bg-primary text-white px-6 py-2.5 rounded-xl font-bold hover:opacity-90 active:scale-[0.98] transition-all flex items-center gap-2 text-sm"
                   >
                     {saving && <Loader2 className="animate-spin" size={18} />}
-                    {editingId ? 'Salvar Alterações' : 'Salvar Modelo'}
+                    {saving ? t('saving') : t('save')}
                   </button>
                 </div>
               </form>
@@ -600,13 +593,13 @@ function NavItem({ icon: Icon, label, active = false, href }: { icon: any, label
       href={href} 
       className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${
         active 
-          ? 'bg-primary/10 text-primary shadow-sm shadow-primary/5' 
-          : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+          ? 'bg-primary/10 text-primary dark:bg-accent/10 dark:text-accent shadow-sm' 
+          : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-850 hover:text-gray-900 dark:hover:text-white'
       }`}
     >
       <Icon size={20} />
       <span>{label}</span>
-      {active && <motion.div layoutId="activeNav" className="ml-auto w-1.5 h-1.5 rounded-full bg-primary" />}
+      {active && <motion.div layoutId="activeNav" className="ml-auto w-1.5 h-1.5 rounded-full bg-primary dark:bg-accent" />}
     </a>
   );
 }
@@ -614,8 +607,8 @@ function NavItem({ icon: Icon, label, active = false, href }: { icon: any, label
 function SpecLine({ label, value }: { label: string, value: any }) {
   return (
     <div className="flex justify-between items-center text-xs">
-      <span className="text-gray-400 font-medium">{label}</span>
-      <span className="text-gray-700 font-bold max-w-[60%] truncate text-right">{value}</span>
+      <span className="text-gray-400 dark:text-slate-500 font-medium">{label}</span>
+      <span className="text-gray-700 dark:text-slate-200 font-bold max-w-[60%] truncate text-right">{value}</span>
     </div>
   );
 }
