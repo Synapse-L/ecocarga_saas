@@ -15,7 +15,8 @@ import {
   Users,
   LayoutDashboard,
   LogOut,
-  Cpu
+  Cpu,
+  Sparkles
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
@@ -85,15 +86,13 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-gray-50/50 dark:bg-slate-950 transition-colors duration-300">
+    <div className="flex min-h-screen bg-background text-foreground transition-colors duration-300">
       {/* Sidebar */}
-      <aside className="w-64 bg-white dark:bg-slate-900 border-r border-gray-200 dark:border-slate-800 flex flex-col fixed h-full z-20 transition-colors duration-300">
+      <aside className="w-64 bg-[var(--sidebar-bg)] border-r border-[var(--sidebar-border)] flex flex-col fixed h-full z-20 transition-colors duration-300">
         <div className="p-6">
           <div className="flex items-center gap-2 mb-8">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-xl">P</span>
-            </div>
-            <span className="text-xl font-bold tracking-tight text-gray-900 dark:text-white">ProposalPro</span>
+            <img src="/ecocarga-logo-small.png" alt="EcoCarga" className="w-8 h-8 object-contain" />
+            <span className="text-lg font-bold tracking-tight text-[var(--sidebar-text-active)]">Kepler's Proposal</span>
           </div>
 
           <nav className="space-y-1">
@@ -106,19 +105,19 @@ export default function SettingsPage() {
           </nav>
         </div>
 
-        <div className="mt-auto p-6 border-t border-gray-200 dark:border-slate-800">
+        <div className="mt-auto p-6 border-t border-[var(--sidebar-border)]">
           <div className="flex items-center gap-3 mb-6 px-2">
-            <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-slate-800 flex items-center justify-center text-xs font-bold text-gray-500 dark:text-gray-400">
+            <div className="w-8 h-8 rounded-full bg-[var(--sidebar-nav-hover-bg)] flex items-center justify-center text-xs font-bold text-[var(--sidebar-nav-text)]">
               {profile?.full_name?.substring(0, 2).toUpperCase() || 'US'}
             </div>
             <div className="overflow-hidden">
-              <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{profile?.full_name}</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">Plano Pro</p>
+              <p className="text-sm font-bold text-[var(--sidebar-text-active)] truncate">{profile?.full_name}</p>
+              <p className="text-xs text-[var(--sidebar-nav-text)] truncate">Plano Pro</p>
             </div>
           </div>
           <button 
             onClick={handleLogout}
-            className="flex items-center gap-3 w-full px-2 py-2 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 transition-colors"
+            className="flex items-center gap-3 w-full px-2 py-2 text-[var(--sidebar-nav-text)] hover:text-red-500 dark:hover:text-red-400 transition-colors cursor-pointer"
           >
             <LogOut size={20} />
             <span className="font-medium">{t('logout')}</span>
@@ -129,12 +128,12 @@ export default function SettingsPage() {
       {/* Main Content */}
       <main className="flex-1 flex flex-col ml-64 min-h-screen">
         {/* Header */}
-        <header className="h-16 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-gray-200 dark:border-slate-800 px-8 flex items-center justify-between sticky top-0 z-10 transition-colors duration-300">
+        <header className="h-16 bg-background/80 backdrop-blur-md border-b border-border px-8 flex items-center justify-between sticky top-0 z-10 transition-colors duration-300">
           <div className="flex items-center gap-4">
-            <button onClick={() => router.push('/')} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-colors text-gray-500 dark:text-gray-400">
+            <button onClick={() => router.push('/')} className="p-2 hover:bg-[var(--sidebar-nav-hover-bg)] rounded-lg transition-colors text-[var(--sidebar-nav-text)] cursor-pointer">
               <ArrowLeft size={20} />
             </button>
-            <h1 className="text-xl font-bold text-gray-800 dark:text-white">{t('settings')}</h1>
+            <h1 className="text-xl font-bold text-foreground">{t('settings')}</h1>
           </div>
         </header>
 
@@ -179,14 +178,14 @@ export default function SettingsPage() {
                   <h2 className="text-lg font-bold text-gray-900 dark:text-white">{t('theme')}</h2>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   <button
                     type="button"
                     onClick={() => setLocalTheme('light')}
-                    className={`flex items-center justify-center gap-3 p-4 rounded-2xl border-2 transition-all font-bold text-sm ${
+                    className={`flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border-2 transition-all font-bold text-xs ${
                       localTheme === 'light' 
                         ? 'border-primary dark:border-accent bg-primary/5 dark:bg-accent/5 text-primary dark:text-accent' 
-                        : 'border-gray-100 dark:border-slate-800 hover:border-gray-200 dark:hover:border-slate-700 text-gray-500 dark:text-gray-400'
+                        : 'border-border hover:border-gray-200 dark:hover:border-slate-700 text-gray-500 dark:text-gray-400'
                     }`}
                   >
                     <Sun size={20} />
@@ -196,14 +195,27 @@ export default function SettingsPage() {
                   <button
                     type="button"
                     onClick={() => setLocalTheme('dark')}
-                    className={`flex items-center justify-center gap-3 p-4 rounded-2xl border-2 transition-all font-bold text-sm ${
+                    className={`flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border-2 transition-all font-bold text-xs ${
                       localTheme === 'dark' 
                         ? 'border-primary dark:border-accent bg-primary/5 dark:bg-accent/5 text-primary dark:text-accent' 
-                        : 'border-gray-100 dark:border-slate-800 hover:border-gray-200 dark:hover:border-slate-700 text-gray-500 dark:text-gray-400'
+                        : 'border-border hover:border-gray-200 dark:hover:border-slate-700 text-gray-500 dark:text-gray-400'
                     }`}
                   >
                     <Moon size={20} />
                     {t('themeDark')}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setLocalTheme('ecocarga')}
+                    className={`flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border-2 transition-all font-bold text-xs ${
+                      localTheme === 'ecocarga' 
+                        ? 'border-primary dark:border-accent bg-primary/5 dark:bg-accent/5 text-primary dark:text-accent' 
+                        : 'border-border hover:border-gray-200 dark:hover:border-slate-700 text-gray-500 dark:text-gray-400'
+                    }`}
+                  >
+                    <Sparkles size={20} />
+                    {t('themeEcocarga')}
                   </button>
                 </div>
               </div>
@@ -294,13 +306,13 @@ function NavItem({ icon: Icon, label, active = false, href }: { icon: any, label
       href={href} 
       className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${
         active 
-          ? 'bg-primary/10 text-primary dark:bg-accent/10 dark:text-accent shadow-sm' 
-          : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-850 hover:text-gray-900 dark:hover:text-white'
+          ? 'bg-[var(--sidebar-nav-active-bg)] text-[var(--sidebar-nav-active-text)] shadow-sm' 
+          : 'text-[var(--sidebar-nav-text)] hover:bg-[var(--sidebar-nav-hover-bg)] hover:text-[var(--sidebar-nav-hover-text)]'
       }`}
     >
       <Icon size={20} />
       <span>{label}</span>
-      {active && <motion.div layoutId="activeNav" className="ml-auto w-1.5 h-1.5 rounded-full bg-primary dark:bg-accent" />}
+      {active && <motion.div layoutId="activeNav" className="ml-auto w-1.5 h-1.5 rounded-full bg-[var(--sidebar-nav-bullet)]" />}
     </a>
   );
 }

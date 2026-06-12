@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AppProvider } from "@/context/AppContext";
+import KeplerAssistant from "@/components/ai/KeplerAssistant";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -14,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ProposalPro — Plataforma de Propostas Comerciais",
+  title: "Kepler's Proposal — Plataforma de Propostas Comerciais",
   description: "Gerador premium de propostas comerciais de carregadores elétricos.",
 };
 
@@ -31,6 +32,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <AppProvider>
           {children}
+          <KeplerAssistant />
         </AppProvider>
       </body>
     </html>

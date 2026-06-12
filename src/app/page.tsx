@@ -23,6 +23,7 @@ import {
   Sparkles,
   DollarSign,
   Activity,
+  Trash2,
   ArrowUpRight,
   FileSpreadsheet,
   ChevronLeft,
@@ -91,7 +92,11 @@ export default function Dashboard() {
   const [loadingPages, setLoadingPages] = useState(false);
   const [selectedProposal, setSelectedProposal] = useState<any>(null);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [activeStatusMenuId, setActiveStatusMenuId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'table' | 'kanban'>('table');
+  const [activeTab, setActiveTab] = useState<'charts' | 'proposals' | 'insights'>('charts');
   const [viewingId, setViewingId] = useState<string | null>(null);
+  const [activeHoverColumn, setActiveHoverColumn] = useState<string | null>(null);
 
   useEffect(() => {
     fetchDashboardData();
@@ -99,13 +104,16 @@ export default function Dashboard() {
     // Close options menu when clicking outside
     const handleOutsideClick = () => {
       setActiveMenuId(null);
+      setActiveStatusMenuId(null);
     };
     window.addEventListener('click', handleOutsideClick);
     return () => window.removeEventListener('click', handleOutsideClick);
   }, []);
 
-  const fetchDashboardData = async () => {
-    setLoading(true);
+  const fetchDashboardData = async (silent = false) => {
+    if (!silent) {
+      setLoading(true);
+    }
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -127,8 +135,12 @@ export default function Dashboard() {
       setProposals(realData);
       
       // Calculate commercial intelligence stats
-      const computed = getDashboardStats(realData);
+      const computed = await getDashboardStats(realData);
       setStats(computed);
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('dashboardStats', JSON.stringify(computed));
+        window.dispatchEvent(new Event('dashboardStatsUpdated'));
+      }
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -208,6 +220,35 @@ export default function Dashboard() {
 
   const handleDelete = async (id: string) => {
     if (!confirm('Deseja realmente excluir esta proposta?')) return;
+    
+    // Support local mock data updating
+    if (id.toString().startsWith('mock-')) {
+      const updatedProposals = proposals.filter(p => p.id !== id);
+      setProposals(updatedProposals);
+      
+      // Update sessionStorage database of mocks
+      if (typeof window !== 'undefined') {
+        const saved = sessionStorage.getItem('proposalpro_mock_proposals');
+        if (saved) {
+          try {
+            const mocks = JSON.parse(saved);
+            const filteredMocks = mocks.filter((p: any) => p.id !== id);
+            sessionStorage.setItem('proposalpro_mock_proposals', JSON.stringify(filteredMocks));
+          } catch (e) {
+            console.error('Error parsing mock proposals', e);
+          }
+        }
+      }
+
+      const computed = await getDashboardStats(updatedProposals);
+      setStats(computed);
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('dashboardStats', JSON.stringify(computed));
+        window.dispatchEvent(new Event('dashboardStatsUpdated'));
+      }
+      return;
+    }
+
     try {
       const { error } = await supabase
         .from('proposals')
@@ -215,10 +256,184 @@ export default function Dashboard() {
         .eq('id', id);
 
       if (error) throw error;
-      fetchDashboardData();
+      fetchDashboardData(true);
     } catch (err) {
       console.error('Erro ao excluir proposta:', err);
       alert('Erro ao excluir proposta');
+    }
+  };
+
+  const handleUpdateStatus = async (id: string, newStatus: string) => {
+    // Find proposal in either real proposals or stats.allProposals (mock proposals)
+    const proposal = proposals.find(p => p.id === id) || stats?.allProposals?.find((p: any) => p.id === id);
+    if (!proposal) {
+      console.warn('Proposta não encontrada para atualizar status:', id);
+      return;
+    }
+    const oldStatus = proposal.status;
+
+    // Save previous state for rollback
+    const previousProposals = [...proposals];
+    const previousStats = stats;
+
+    // Support local mock data updating
+    if (id.toString().startsWith('mock-')) {
+      let updatedMocks = [];
+      if (typeof window !== 'undefined') {
+        const saved = sessionStorage.getItem('proposalpro_mock_proposals');
+        if (saved) {
+          try {
+            const mocks = JSON.parse(saved);
+            updatedMocks = mocks.map((p: any) => {
+              if (p.id === id) {
+                return { ...p, status: newStatus };
+              }
+              return p;
+            });
+            sessionStorage.setItem('proposalpro_mock_proposals', JSON.stringify(updatedMocks));
+          } catch (e) {
+            console.error('Error parsing mock proposals', e);
+          }
+        }
+      }
+      
+      // Update UI and stats for mocks immediately
+      const computed = await getDashboardStats(proposals);
+      setStats(computed);
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('dashboardStats', JSON.stringify(computed));
+        window.dispatchEvent(new Event('dashboardStatsUpdated'));
+      }
+      return;
+    }
+
+    // 1. Optimistic Update for Real Proposals
+    const updatedProposals = proposals.map(p => {
+      if (p.id === id) {
+        return { ...p, status: newStatus };
+      }
+      return p;
+    });
+    setProposals(updatedProposals);
+
+    // Recalculate and update stats immediately
+    const computed = await getDashboardStats(updatedProposals);
+    setStats(computed);
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('dashboardStats', JSON.stringify(computed));
+      window.dispatchEvent(new Event('dashboardStatsUpdated'));
+    }
+
+    // 2. Background Sync with Supabase
+    try {
+      const { error } = await supabase
+        .from('proposals')
+        .update({ status: newStatus })
+        .eq('id', id);
+
+      if (error) throw error;
+      
+      // Background silent refetch to keep data in sync
+      fetchDashboardData(true);
+    } catch (err) {
+      console.error('Erro ao atualizar status da proposta:', err);
+      // 3. Rollback on Error
+      setProposals(previousProposals);
+      setStats(previousStats);
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('dashboardStats', JSON.stringify(previousStats));
+        window.dispatchEvent(new Event('dashboardStatsUpdated'));
+      }
+      alert('Erro ao atualizar status. Movimento desfeito.');
+    }
+  };
+
+  const handleDrag = (event: any, info: any) => {
+    if (typeof window === 'undefined') return;
+    const x = info.point.x - window.scrollX;
+    const y = info.point.y - window.scrollY;
+    
+    const columns = document.querySelectorAll('[data-column-status]');
+    let bestColumn = null;
+    let minDistance = Infinity;
+    
+    const getDistanceToRect = (px: number, py: number, rect: DOMRect) => {
+      const dx = Math.max(rect.left - px, 0, px - rect.right);
+      const dy = Math.max(rect.top - py, 0, py - rect.bottom);
+      return Math.sqrt(dx * dx + dy * dy);
+    };
+
+    for (const col of Array.from(columns)) {
+      const rect = col.getBoundingClientRect();
+      const dist = getDistanceToRect(x, y, rect);
+      if (dist < minDistance) {
+        minDistance = dist;
+        bestColumn = col;
+      }
+    }
+    
+    const targetStatus = bestColumn && minDistance < 300 ? bestColumn.getAttribute('data-column-status') : null;
+    
+    if (targetStatus !== activeHoverColumn) {
+      setActiveHoverColumn(targetStatus);
+    }
+  };
+
+  const handleDragEnd = (event: any, info: any, proposalId: string, currentStatus: string) => {
+    if (typeof window === 'undefined') return;
+    const x = info.point.x - window.scrollX;
+    const y = info.point.y - window.scrollY;
+    
+    const columns = document.querySelectorAll('[data-column-status]');
+    let bestColumn = null;
+    let minDistance = Infinity;
+    
+    const getDistanceToRect = (px: number, py: number, rect: DOMRect) => {
+      const dx = Math.max(rect.left - px, 0, px - rect.right);
+      const dy = Math.max(rect.top - py, 0, py - rect.bottom);
+      return Math.sqrt(dx * dx + dy * dy);
+    };
+
+    for (const col of Array.from(columns)) {
+      const rect = col.getBoundingClientRect();
+      const dist = getDistanceToRect(x, y, rect);
+      if (dist < minDistance) {
+        minDistance = dist;
+        bestColumn = col;
+      }
+    }
+    
+    const targetStatus = bestColumn ? bestColumn.getAttribute('data-column-status') : null;
+    console.log('Kanban Drag End:', { 
+      proposalId, 
+      currentStatus, 
+      targetStatus, 
+      pointer: { x, y }, 
+      minDistance 
+    });
+    
+    setActiveHoverColumn(null);
+    
+    if (targetStatus && minDistance < 300) {
+      const getColumnKey = (status: string) => {
+        if (status === 'Negociação' || status === 'Enviado' || status === 'Rascunho') {
+          return 'Em Andamento';
+        }
+        if (status === 'Concluído') {
+          return 'Aprovadas';
+        }
+        if (status === 'Vencido') {
+          return 'Desaprovadas';
+        }
+        return status;
+      };
+
+      const currentColumnKey = getColumnKey(currentStatus);
+      const targetColumnKey = getColumnKey(targetStatus);
+
+      if (currentColumnKey !== targetColumnKey) {
+        handleUpdateStatus(proposalId, targetStatus);
+      }
     }
   };
 
@@ -336,11 +551,215 @@ export default function Dashboard() {
     setReorderPages(newPages);
   };
 
-  // CSV Export utility
-  const handleExportCSV = () => {
+  // Evolved Styled Excel Export using exceljs
+  const handleExportExcel = async () => {
     if (!stats || !stats.allProposals) return;
-    
-    const headers = ['Titulo', 'Cliente', 'Produto', 'Potencia', 'Valor (R$)', 'Status', 'Data Criacao'];
+
+    try {
+      const ExcelJS = (await import('exceljs')).default;
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Relatório Comercial');
+
+      // Page Setup
+      worksheet.pageSetup.fitToPage = true;
+      
+      // Inserir cabeçalho informativo superior
+      worksheet.getCell('A1').value = 'RELATÓRIO COMERCIAL';
+      worksheet.getCell('A1').font = { name: 'Segoe UI', size: 16, bold: true, color: { argb: 'FF0F172A' } };
+      
+      worksheet.getCell('A2').value = `Data de geração: ${new Date().toLocaleDateString('pt-BR')} ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+      worksheet.getCell('A2').font = { name: 'Segoe UI', size: 10, italic: true, color: { argb: 'FF64748B' } };
+      
+      worksheet.getCell('A3').value = 'Sistema: ProposalPro';
+      worksheet.getCell('A3').font = { name: 'Segoe UI', size: 10, italic: true, color: { argb: 'FF64748B' } };
+
+      // Table Headers on Row 5
+      const headers = ['Título', 'Cliente', 'Produto', 'Potência', 'Valor (R$)', 'Status', 'Data'];
+      const headerRow = worksheet.getRow(5);
+      headerRow.values = headers;
+      headerRow.height = 32;
+
+      headers.forEach((h, i) => {
+        const cell = headerRow.getCell(i + 1);
+        cell.font = { name: 'Segoe UI', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FF0F172A' }
+        };
+        cell.alignment = { 
+          vertical: 'middle', 
+          horizontal: i === 4 ? 'right' : i === 5 ? 'center' : 'left' 
+        };
+        cell.border = {
+          bottom: { style: 'medium', color: { argb: 'FF1E293B' } },
+          top: { style: 'thin', color: { argb: 'FF0F172A' } },
+          left: { style: 'thin', color: { argb: 'FF1E293B' } },
+          right: { style: 'thin', color: { argb: 'FF1E293B' } }
+        };
+      });
+
+      // Data Rows
+      filteredProposals.forEach((p, idx) => {
+        const rowNumber = idx + 6;
+        const row = worksheet.getRow(rowNumber);
+        
+        const clientName = p.client?.name || p.commercial_data?.client?.name || 'Cliente s/ nome';
+        const productName = p.commercial_data?.commercial?.productName || '';
+        const power = p.commercial_data?.commercial?.power || '';
+        const price = p.commercial_data?.commercial?.price || 0;
+        const status = p.status;
+        
+        let rawDate = new Date(p.created_at);
+        if (isNaN(rawDate.getTime())) {
+          rawDate = new Date();
+        }
+
+        row.values = [
+          p.title,
+          clientName,
+          productName,
+          power,
+          price,
+          status,
+          rawDate
+        ];
+        row.height = 22;
+
+        const isEven = idx % 2 === 0;
+        const rowBgColor = isEven ? 'FFFFFFFF' : 'FFF8FAFC';
+
+        for (let i = 1; i <= 7; i++) {
+          const cell = row.getCell(i);
+          cell.font = { name: 'Segoe UI', size: 10 };
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: rowBgColor }
+          };
+          cell.alignment = { 
+            vertical: 'middle', 
+            horizontal: i === 5 ? 'right' : i === 6 ? 'center' : 'left' 
+          };
+          cell.border = {
+            bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+            left: { style: 'thin', color: { argb: 'FFF1F5F9' } },
+            right: { style: 'thin', color: { argb: 'FFF1F5F9' } }
+          };
+        }
+
+        const priceCell = row.getCell(5);
+        priceCell.numFmt = '"R$"#,##0.00;("R$"#,##0.00);"-"';
+
+        const dateCell = row.getCell(7);
+        dateCell.numFmt = 'dd/mm/yyyy';
+
+        const statusCell = row.getCell(6);
+        let statusStyles = { bg: 'FFF1FBF7', fg: 'FF065F46' }; // Aprovada (Green)
+        
+        if (status === 'Negociação') {
+          statusStyles = { bg: 'FFFEF9C3', fg: 'FF854D0E' }; // Amarelo
+        } else if (status === 'Enviado') {
+          statusStyles = { bg: 'FFEFF6FF', fg: 'FF1E40AF' }; // Azul
+        } else if (status === 'Rascunho') {
+          statusStyles = { bg: 'FFF1F5F9', fg: 'FF334155' }; // Cinza
+        } else if (status === 'Vencido') {
+          statusStyles = { bg: 'FFFEE2E2', fg: 'FF991B1B' }; // Vermelho
+        }
+        
+        statusCell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: statusStyles.bg }
+        };
+        statusCell.font = {
+          name: 'Segoe UI',
+          size: 9,
+          bold: true,
+          color: { argb: statusStyles.fg }
+        };
+      });
+
+      // Congelar primeira linha da tabela
+      worksheet.views = [
+        { state: 'frozen', xSplit: 0, ySplit: 5 }
+      ];
+
+      // Filtros automáticos em todas as colunas
+      worksheet.autoFilter = {
+        from: { row: 5, column: 1 },
+        to: { row: filteredProposals.length + 5, column: 7 }
+      };
+
+      // Linha de Totais
+      const totalsRowNumber = filteredProposals.length + 7;
+      const totalsRow = worksheet.getRow(totalsRowNumber);
+      totalsRow.height = 26;
+
+      totalsRow.getCell(1).value = 'Total de propostas:';
+      totalsRow.getCell(1).font = { name: 'Segoe UI', size: 10, bold: true, color: { argb: 'FF334155' } };
+      totalsRow.getCell(1).alignment = { horizontal: 'right', vertical: 'middle' };
+
+      totalsRow.getCell(2).value = { formula: `=COUNTA(A6:A${filteredProposals.length + 5})` } as any;
+      totalsRow.getCell(2).font = { name: 'Segoe UI', size: 10, bold: true, color: { argb: 'FF0F172A' } };
+      totalsRow.getCell(2).alignment = { horizontal: 'left', vertical: 'middle' };
+
+      totalsRow.getCell(4).value = 'Valor total:';
+      totalsRow.getCell(4).font = { name: 'Segoe UI', size: 10, bold: true, color: { argb: 'FF334155' } };
+      totalsRow.getCell(4).alignment = { horizontal: 'right', vertical: 'middle' };
+
+      totalsRow.getCell(5).value = { formula: `=SUM(E6:E${filteredProposals.length + 5})` } as any;
+      totalsRow.getCell(5).font = { name: 'Segoe UI', size: 11, bold: true, color: { argb: 'FF004D31' } };
+      totalsRow.getCell(5).numFmt = '"R$"#,##0.00;("R$"#,##0.00);"-"';
+      totalsRow.getCell(5).alignment = { horizontal: 'right', vertical: 'middle' };
+
+      for (let i = 1; i <= 7; i++) {
+        totalsRow.getCell(i).border = {
+          top: { style: 'thin', color: { argb: 'FF94A3B8' } },
+          bottom: { style: 'double', color: { argb: 'FF94A3B8' } }
+        };
+        if (i !== 1 && i !== 2 && i !== 4 && i !== 5) {
+          totalsRow.getCell(i).fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFF8FAFC' }
+          };
+        }
+      }
+
+      // Largura automática das colunas
+      const defaultWidths = [28, 22, 22, 12, 18, 14, 14];
+      for (let colIdx = 1; colIdx <= 7; colIdx++) {
+        const col = worksheet.getColumn(colIdx);
+        let maxLen = 12;
+        col.eachCell({ includeEmpty: false }, (cell, rowIdx) => {
+          if (rowIdx >= 5 && rowIdx <= filteredProposals.length + 5) {
+            const valStr = cell.value ? String(cell.value) : '';
+            if (valStr.length > maxLen) {
+              maxLen = valStr.length;
+            }
+          }
+        });
+        col.width = Math.min(Math.max(maxLen + 4, defaultWidths[colIdx - 1]), 45);
+      }
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `Relatorio_Comercial_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error('Erro ao gerar relatório Excel:', error);
+      alert('Erro ao gerar arquivo Excel. Exportando em formato de fallback CSV...');
+      handleExportCSVFallback();
+    }
+  };
+
+  const handleExportCSVFallback = () => {
+    const headers = ['Título', 'Cliente', 'Produto', 'Potência', 'Valor (R$)', 'Status', 'Data'];
     const rows = filteredProposals.map(p => [
       p.title,
       p.client?.name || p.commercial_data?.client?.name || 'Cliente s/ nome',
@@ -476,7 +895,7 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-50/50 dark:bg-slate-950 transition-colors duration-300">
+    <div className="flex min-h-screen bg-background text-foreground transition-colors duration-300">
       {/* Hidden renderer for PDF capturing (ALWAYS light/white background as user wants) */}
       <div style={{ position: 'absolute', left: '-9999px', top: '-9999px' }}>
         {currentProposal && (
@@ -487,14 +906,12 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Sidebar (UNTOUCHED) */}
-      <aside className="w-64 bg-white dark:bg-slate-900 border-r border-gray-200 dark:border-slate-800 flex flex-col fixed h-full z-20 transition-colors duration-300">
+      {/* Sidebar (UNTOUCHED structure, updated styling variables) */}
+      <aside className="w-64 bg-[var(--sidebar-bg)] border-r border-[var(--sidebar-border)] flex flex-col fixed h-full z-20 transition-colors duration-300">
         <div className="p-6">
           <div className="flex items-center gap-2 mb-8">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-xl">P</span>
-            </div>
-            <span className="text-xl font-bold tracking-tight text-gray-900 dark:text-white">ProposalPro</span>
+            <img src="/ecocarga-logo-small.png" alt="EcoCarga" className="w-8 h-8 object-contain" />
+            <span className="text-lg font-bold tracking-tight text-[var(--sidebar-text-active)]">Kepler's Proposal</span>
           </div>
 
           <nav className="space-y-1">
@@ -507,19 +924,19 @@ export default function Dashboard() {
           </nav>
         </div>
 
-        <div className="mt-auto p-6 border-t border-gray-200 dark:border-slate-800">
+        <div className="mt-auto p-6 border-t border-[var(--sidebar-border)]">
           <div className="flex items-center gap-3 mb-6 px-2">
-            <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-slate-850 flex items-center justify-center text-xs font-bold text-gray-500 dark:text-gray-400">
+            <div className="w-8 h-8 rounded-full bg-[var(--sidebar-nav-hover-bg)] flex items-center justify-center text-xs font-bold text-[var(--sidebar-nav-text)]">
               {profile?.full_name?.substring(0, 2).toUpperCase() || 'US'}
             </div>
             <div className="overflow-hidden">
-              <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{profile?.full_name}</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">Plano Pro</p>
+              <p className="text-sm font-bold text-[var(--sidebar-text-active)] truncate">{profile?.full_name}</p>
+              <p className="text-xs text-[var(--sidebar-nav-text)] truncate">Plano Pro</p>
             </div>
           </div>
           <button 
             onClick={handleLogout}
-            className="flex items-center gap-3 w-full px-2 py-2 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 transition-colors"
+            className="flex items-center gap-3 w-full px-2 py-2 text-[var(--sidebar-nav-text)] hover:text-red-500 dark:hover:text-red-400 transition-colors cursor-pointer"
           >
             <LogOut size={20} />
             <span className="font-medium">{t('logout')}</span>
@@ -556,8 +973,31 @@ export default function Dashboard() {
 
         {/* Evolved Scrollable Content Area */}
         <div className="p-8 space-y-8 max-w-7xl mx-auto w-full">
+        {/* Tab Navigation */}
+        <div className="flex gap-4 mb-6">
+          <button
+            onClick={() => setActiveTab('charts')}
+            className={`px-4 py-2 rounded ${activeTab === 'charts' ? 'bg-primary text-white' : 'bg-gray-200 dark:bg-slate-800 text-gray-800 dark:text-gray-200'}`}
+          >
+            Gráficos
+          </button>
+          <button
+            onClick={() => setActiveTab('insights')}
+            className={`px-4 py-2 rounded ${activeTab === 'insights' ? 'bg-primary text-white' : 'bg-gray-200 dark:bg-slate-800 text-gray-800 dark:text-gray-200'}`}
+          >
+            Insights & Rankings
+          </button>
+          <button
+            onClick={() => setActiveTab('proposals')}
+            className={`px-4 py-2 rounded ${activeTab === 'proposals' ? 'bg-primary text-white' : 'bg-gray-200 dark:bg-slate-800 text-gray-800 dark:text-gray-200'}`}
+          >
+            Gerenciador
+          </button>
+        </div>
           
           {/* Section 1: Executive KPIs (Cards Inteligentes) */}
+          {activeTab === 'charts' && (
+          <>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
             <KPICard 
               title={t('totalProposals')}
@@ -760,9 +1200,12 @@ export default function Dashboard() {
               />
             </div>
           </div>
+          </>
+          )}
 
           {/* Section 4: IA Insights, Top Clientes & Top Produtos */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {activeTab === 'insights' && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             
             {/* Bloco Insights Comerciais */}
             <motion.div 
@@ -862,27 +1305,59 @@ export default function Dashboard() {
               </div>
             </motion.div>
           </div>
+          )}
 
           {/* Section 5: Timeline & Tabela de Propostas Layout */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {activeTab === 'proposals' && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             
             {/* Tabela de Propostas (2/3 width) */}
             <div className="lg:col-span-2 space-y-4">
               
               {/* Tabela Card */}
-              <div className="bg-white dark:bg-slate-900 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm overflow-hidden transition-colors duration-300">
+              <div className={`bg-white dark:bg-slate-900 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm transition-colors duration-300 ${
+                viewMode === 'kanban' ? 'overflow-visible' : 'overflow-hidden'
+              }`}>
                 
                 {/* Tabela Header & Controls */}
                 <div className="p-6 border-b border-gray-100 dark:border-slate-800 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-lg font-bold text-gray-900 dark:text-white">Gerenciador de Propostas</h2>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <h2 className="text-lg font-bold text-gray-900 dark:text-white">Gerenciador de Propostas</h2>
+                      
+                      {/* View Toggle */}
+                      <div className="flex bg-gray-100 dark:bg-slate-800 p-0.5 rounded-lg text-[10px] font-bold text-gray-500 transition-colors">
+                        <button
+                          type="button"
+                          onClick={() => setViewMode('table')}
+                          className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                            viewMode === 'table'
+                              ? 'bg-white dark:bg-slate-700 text-[#004D31] dark:text-[#B2D235] shadow-sm'
+                              : 'hover:text-gray-900 dark:hover:text-white'
+                          }`}
+                        >
+                          Tabela
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setViewMode('kanban')}
+                          className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                            viewMode === 'kanban'
+                              ? 'bg-white dark:bg-slate-700 text-[#004D31] dark:text-[#B2D235] shadow-sm'
+                              : 'hover:text-gray-900 dark:hover:text-white'
+                          }`}
+                        >
+                          Quadro (Kanban)
+                        </button>
+                      </div>
+                    </div>
                     
                     <button 
-                      onClick={handleExportCSV}
+                      onClick={handleExportExcel}
                       className="text-xs font-bold text-gray-600 dark:text-slate-400 hover:text-primary dark:hover:text-accent border border-gray-100 dark:border-slate-800 px-3.5 py-2 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-850 transition-all flex items-center gap-1.5"
                     >
                       <FileSpreadsheet size={16} />
-                      Exportar CSV
+                      Exportar Excel
                     </button>
                   </div>
 
@@ -922,152 +1397,502 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                {/* Table Data */}
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="bg-gray-50/50 dark:bg-slate-950/50 text-gray-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider border-b border-gray-50 dark:border-slate-800 select-none transition-colors">
-                        <th className="px-6 py-4 cursor-pointer hover:bg-gray-100/30 dark:hover:bg-slate-850/30 transition-colors" onClick={() => toggleSort('client')}>
-                          <div className="flex items-center gap-1.5">
-                            {t('clientName')}
-                            <ArrowUpDown size={12} className="text-gray-400" />
-                          </div>
-                        </th>
-                        <th className="px-6 py-4 cursor-pointer hover:bg-gray-100/30 dark:hover:bg-slate-850/30 transition-colors" onClick={() => toggleSort('title')}>
-                          <div className="flex items-center gap-1.5">
-                            {t('title')}
-                            <ArrowUpDown size={12} className="text-gray-400" />
-                          </div>
-                        </th>
-                        <th className="px-6 py-4 cursor-pointer hover:bg-gray-100/30 dark:hover:bg-slate-850/30 transition-colors" onClick={() => toggleSort('price')}>
-                          <div className="flex items-center gap-1.5">
-                            Valor
-                            <ArrowUpDown size={12} className="text-gray-400" />
-                          </div>
-                        </th>
-                        <th className="px-6 py-4 cursor-pointer hover:bg-gray-100/30 dark:hover:bg-slate-850/30 transition-colors" onClick={() => toggleSort('created_at')}>
-                          <div className="flex items-center gap-1.5">
-                            {t('date')}
-                            <ArrowUpDown size={12} className="text-gray-400" />
-                          </div>
-                        </th>
-                        <th className="px-6 py-4 cursor-pointer hover:bg-gray-100/30 dark:hover:bg-slate-850/30 transition-colors" onClick={() => toggleSort('status')}>
-                          <div className="flex items-center gap-1.5">
-                            {t('status')}
-                            <ArrowUpDown size={12} className="text-gray-400" />
-                          </div>
-                        </th>
-                        <th className="px-6 py-4 text-right">{t('actions')}</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100 dark:divide-slate-800 transition-colors">
-                      {paginatedProposals.length === 0 ? (
-                        <tr>
-                          <td colSpan={6} className="px-6 py-12 text-center text-gray-500 dark:text-slate-400 font-medium text-sm">
-                            Nenhuma proposta atende a estes critérios de filtro.
-                          </td>
-                        </tr>
-                      ) : (
-                        paginatedProposals.map((prop) => (
-                          <tr key={prop.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-950/20 transition-colors group">
-                            <td className="px-6 py-4">
-                              <div className="font-semibold text-gray-900 dark:text-white truncate max-w-[120px]">{prop.client?.name || 'Cliente s/ nome'}</div>
-                            </td>
-                            <td className="px-6 py-4 text-xs text-gray-600 dark:text-slate-350 font-medium">
-                              <span className="truncate max-w-[150px] block">{prop.title}</span>
-                            </td>
-                            <td className="px-6 py-4 text-xs font-black text-gray-900 dark:text-white">
-                              R$ {(prop.commercial_data?.commercial?.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                            </td>
-                            <td className="px-6 py-4 text-xs text-gray-500 dark:text-slate-400">
-                              {new Date(prop.created_at).toLocaleDateString('pt-BR')}
-                            </td>
-                            <td className="px-6 py-4">
-                              <StatusBadge status={prop.status} />
-                            </td>
-                            <td className="px-6 py-4 text-right">
-                              <div className="flex items-center justify-end gap-2 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button 
-                                  onClick={() => handleView(prop)}
-                                  disabled={viewingId === prop.id || downloadingId === prop.id}
-                                  title={t('view')} 
-                                  className="p-2 text-gray-400 hover:text-primary dark:hover:text-accent hover:bg-primary/5 dark:hover:bg-accent/5 rounded-lg transition-all disabled:opacity-30 cursor-pointer"
-                                >
-                                  {viewingId === prop.id ? <Loader2 className="animate-spin" size={16} /> : <ExternalLink size={16} />}
-                                </button>
-                                <button 
-                                  onClick={() => handleDownload(prop)}
-                                  disabled={downloadingId === prop.id || viewingId === prop.id}
-                                  title={t('download')} 
-                                  className="p-2 text-gray-400 hover:text-primary dark:hover:text-accent hover:bg-primary/5 dark:hover:bg-accent/5 rounded-lg transition-all disabled:opacity-30 cursor-pointer"
-                                >
-                                  {downloadingId === prop.id ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
-                                </button>
-                                <button 
-                                  onClick={() => handleDuplicate(prop)}
-                                  title={t('duplicate')} 
-                                  className="p-2 text-gray-400 hover:text-primary dark:hover:text-accent hover:bg-primary/5 dark:hover:bg-accent/5 rounded-lg transition-all cursor-pointer"
-                                >
-                                  <Copy size={16} />
-                                </button>
-                                <div className="relative">
-                                  <button 
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setActiveMenuId(activeMenuId === prop.id ? null : prop.id);
-                                    }}
-                                    title={t('actions')}
-                                    className="p-2 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-all cursor-pointer"
-                                  >
-                                    <MoreVertical size={16} />
-                                  </button>
-                                  
-                                  {activeMenuId === prop.id && (
-                                    <div className="absolute right-0 mt-1 w-32 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl shadow-lg z-30 py-1 text-left">
-                                      <button
-                                        onClick={() => {
-                                          handleDelete(prop.id);
-                                          setActiveMenuId(null);
-                                        }}
-                                        className="w-full text-left px-4 py-2 text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors flex items-center gap-2 cursor-pointer"
-                                      >
-                                        {t('delete')}
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
+                {viewMode === 'table' ? (
+                  <>
+                    {/* Table Data */}
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left">
+                        <thead>
+                          <tr className="bg-gray-50/50 dark:bg-slate-950/50 text-gray-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider border-b border-gray-50 dark:border-slate-800 select-none transition-colors">
+                            <th className="px-6 py-4 cursor-pointer hover:bg-gray-100/30 dark:hover:bg-slate-850/30 transition-colors" onClick={() => toggleSort('client')}>
+                              <div className="flex items-center gap-1.5">
+                                {t('clientName')}
+                                &nbsp;<ArrowUpDown size={12} className="text-gray-400" />
                               </div>
-                            </td>
+                            </th>
+                            <th className="px-6 py-4 cursor-pointer hover:bg-gray-100/30 dark:hover:bg-slate-850/30 transition-colors" onClick={() => toggleSort('title')}>
+                              <div className="flex items-center gap-1.5">
+                                {t('title')}
+                                &nbsp;<ArrowUpDown size={12} className="text-gray-400" />
+                              </div>
+                            </th>
+                            <th className="px-6 py-4 cursor-pointer hover:bg-gray-100/30 dark:hover:bg-slate-850/30 transition-colors" onClick={() => toggleSort('price')}>
+                              <div className="flex items-center gap-1.5">
+                                Valor
+                                &nbsp;<ArrowUpDown size={12} className="text-gray-400" />
+                              </div>
+                            </th>
+                            <th className="px-6 py-4 cursor-pointer hover:bg-gray-100/30 dark:hover:bg-slate-850/30 transition-colors" onClick={() => toggleSort('created_at')}>
+                              <div className="flex items-center gap-1.5">
+                                {t('date')}
+                                &nbsp;<ArrowUpDown size={12} className="text-gray-400" />
+                              </div>
+                            </th>
+                            <th className="px-6 py-4 cursor-pointer hover:bg-gray-100/30 dark:hover:bg-slate-850/30 transition-colors" onClick={() => toggleSort('status')}>
+                              <div className="flex items-center gap-1.5">
+                                {t('status')}
+                                &nbsp;<ArrowUpDown size={12} className="text-gray-400" />
+                              </div>
+                            </th>
+                            <th className="px-6 py-4 text-right">{t('actions')}</th>
                           </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100 dark:divide-slate-800 transition-colors">
+                          {paginatedProposals.length === 0 ? (
+                            <tr>
+                              <td colSpan={6} className="px-6 py-12 text-center text-gray-500 dark:text-slate-400 font-medium text-sm">
+                                Nenhuma proposta atende a estes critérios de filtro.
+                              </td>
+                            </tr>
+                          ) : (
+                            paginatedProposals.map((prop) => (
+                              <tr key={prop.id} className="hover:bg-gray-50/50 dark:hover:bg-slate-950/20 transition-colors group">
+                                <td className="px-6 py-4">
+                                  <div className="font-semibold text-gray-900 dark:text-white truncate max-w-[120px]">{prop.client?.name || 'Cliente s/ nome'}</div>
+                                </td>
+                                <td className="px-6 py-4 text-xs text-gray-600 dark:text-slate-350 font-medium">
+                                  <span className="truncate max-w-[150px] block">{prop.title}</span>
+                                </td>
+                                <td className="px-6 py-4 text-xs font-black text-gray-900 dark:text-white">
+                                  R$ {(prop.commercial_data?.commercial?.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                </td>
+                                <td className="px-6 py-4 text-xs text-gray-500 dark:text-slate-400">
+                                  {new Date(prop.created_at).toLocaleDateString('pt-BR')}
+                                </td>
+                                <td className="px-6 py-4">
+                                  <div className="relative inline-block">
+                                    <button 
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActiveStatusMenuId(activeStatusMenuId === prop.id ? null : prop.id);
+                                      }}
+                                      className="cursor-pointer hover:scale-105 active:scale-95 transition-all duration-150 block focus:outline-none"
+                                      title="Clique para alterar status"
+                                    >
+                                      <StatusBadge status={prop.status} />
+                                    </button>
+                                    
+                                    {activeStatusMenuId === prop.id && (
+                                      <div className="absolute left-0 mt-1 w-48 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl shadow-lg z-30 py-1.5 text-left transition-colors duration-300">
+                                        <p className="px-4 py-1 text-[9px] font-black uppercase text-gray-400 dark:text-slate-500 tracking-wider">Alterar Status</p>
+                                        
+                                        <button
+                                          onClick={() => {
+                                            handleUpdateStatus(prop.id, 'Negociação');
+                                            setActiveStatusMenuId(null);
+                                          }}
+                                          className="w-full text-left px-4 py-1.5 text-xs font-bold text-purple-700 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/20 transition-colors flex items-center gap-2 cursor-pointer"
+                                        >
+                                          <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                                          Em Andamento
+                                        </button>
 
-                {/* Table Pagination */}
-                {totalPages > 1 && (
-                  <div className="p-6 border-t border-gray-50 dark:border-slate-800 flex items-center justify-between text-xs font-bold text-gray-500 transition-colors">
-                    <span>
-                      Exibindo {paginatedProposals.length} de {filteredProposals.length} propostas
-                    </span>
+                                        <button
+                                          onClick={() => {
+                                            handleUpdateStatus(prop.id, 'Concluído');
+                                            setActiveStatusMenuId(null);
+                                          }}
+                                          className="w-full text-left px-4 py-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-colors flex items-center gap-2 cursor-pointer"
+                                        >
+                                          <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                          Aprovada
+                                        </button>
+
+                                        <button
+                                          onClick={() => {
+                                            handleUpdateStatus(prop.id, 'Vencido');
+                                            setActiveStatusMenuId(null);
+                                          }}
+                                          className="w-full text-left px-4 py-1.5 text-xs font-bold text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors flex items-center gap-2 cursor-pointer"
+                                        >
+                                          <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                                          Recusada (Desaprovada)
+                                        </button>
+
+                                        <button
+                                          onClick={() => {
+                                            handleUpdateStatus(prop.id, 'Enviado');
+                                            setActiveStatusMenuId(null);
+                                          }}
+                                          className="w-full text-left px-4 py-1.5 text-xs font-bold text-blue-750 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-colors flex items-center gap-2 cursor-pointer"
+                                        >
+                                          <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                                          Enviada
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 text-right">
+                                  <div className="flex items-center justify-end gap-2 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button 
+                                      onClick={() => handleView(prop)}
+                                      disabled={viewingId === prop.id || downloadingId === prop.id}
+                                      title={t('view')} 
+                                      className="p-2 text-gray-400 hover:text-primary dark:hover:text-accent hover:bg-primary/5 dark:hover:bg-accent/5 rounded-lg transition-all disabled:opacity-30 cursor-pointer"
+                                    >
+                                      {viewingId === prop.id ? <Loader2 className="animate-spin" size={16} /> : <ExternalLink size={16} />}
+                                    </button>
+                                    <button 
+                                      onClick={() => handleDownload(prop)}
+                                      disabled={downloadingId === prop.id || viewingId === prop.id}
+                                      title={t('download')} 
+                                      className="p-2 text-gray-400 hover:text-primary dark:hover:text-accent hover:bg-primary/5 dark:hover:bg-accent/5 rounded-lg transition-all disabled:opacity-30 cursor-pointer"
+                                    >
+                                      {downloadingId === prop.id ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
+                                    </button>
+                                    <button 
+                                      onClick={() => handleDuplicate(prop)}
+                                      title={t('duplicate')} 
+                                      className="p-2 text-gray-400 hover:text-primary dark:hover:text-accent hover:bg-primary/5 dark:hover:bg-accent/5 rounded-lg transition-all cursor-pointer"
+                                    >
+                                      <Copy size={16} />
+                                    </button>
+                                    <div className="relative">
+                                      <button 
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setActiveMenuId(activeMenuId === prop.id ? null : prop.id);
+                                        }}
+                                        title={t('actions')}
+                                        className="p-2 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800 rounded-lg transition-all cursor-pointer"
+                                      >
+                                        <MoreVertical size={16} />
+                                      </button>
+                                      
+                                      {activeMenuId === prop.id && (
+                                        <div className="absolute right-0 mt-1 w-48 bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl shadow-lg z-30 py-1.5 text-left transition-colors duration-300">
+                                          <p className="px-4 py-1 text-[9px] font-black uppercase text-gray-400 dark:text-slate-500 tracking-wider">Alterar Status</p>
+                                          
+                                          <button
+                                            onClick={() => {
+                                              handleUpdateStatus(prop.id, 'Negociação');
+                                              setActiveMenuId(null);
+                                            }}
+                                            className="w-full text-left px-4 py-1.5 text-xs font-bold text-purple-700 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/20 transition-colors flex items-center gap-2 cursor-pointer"
+                                          >
+                                            <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                                            Em Andamento
+                                          </button>
+
+                                          <button
+                                            onClick={() => {
+                                              handleUpdateStatus(prop.id, 'Concluído');
+                                              setActiveMenuId(null);
+                                            }}
+                                            className="w-full text-left px-4 py-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-colors flex items-center gap-2 cursor-pointer"
+                                          >
+                                            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                            Aprovada
+                                          </button>
+
+                                          <button
+                                            onClick={() => {
+                                              handleUpdateStatus(prop.id, 'Vencido');
+                                              setActiveMenuId(null);
+                                            }}
+                                            className="w-full text-left px-4 py-1.5 text-xs font-bold text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors flex items-center gap-2 cursor-pointer"
+                                          >
+                                            <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                                            Recusada (Desaprovada)
+                                          </button>
+
+                                          <button
+                                            onClick={() => {
+                                              handleUpdateStatus(prop.id, 'Enviado');
+                                              setActiveMenuId(null);
+                                            }}
+                                            className="w-full text-left px-4 py-1.5 text-xs font-bold text-blue-700 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-colors flex items-center gap-2 cursor-pointer"
+                                          >
+                                            <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                                            Enviada
+                                          </button>
+
+                                          <div className="border-t border-gray-100 dark:border-slate-700 my-1" />
+
+                                          <button
+                                            onClick={() => {
+                                              handleDelete(prop.id);
+                                              setActiveMenuId(null);
+                                            }}
+                                            className="w-full text-left px-4 py-1.5 text-xs font-bold text-red-655 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors flex items-center gap-2 cursor-pointer"
+                                          >
+                                            {t('delete')}
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Table Pagination */}
+                    {totalPages > 1 && (
+                      <div className="p-6 border-t border-gray-50 dark:border-slate-800 flex items-center justify-between text-xs font-bold text-gray-500 transition-colors">
+                        <span>
+                          Exibindo {paginatedProposals.length} de {filteredProposals.length} propostas
+                        </span>
+                        
+                        <div className="flex items-center gap-2">
+                          <button 
+                            disabled={currentPage === 1}
+                            onClick={() => setCurrentPage(v => Math.max(1, v - 1))}
+                            className="p-2 rounded-lg border border-gray-100 dark:border-slate-800 hover:bg-gray-50 dark:hover:bg-slate-850 disabled:opacity-20 cursor-pointer"
+                          >
+                            <ChevronLeft size={16} />
+                          </button>
+                          <span className="px-2">Página {currentPage} de {totalPages}</span>
+                          <button 
+                            disabled={currentPage === totalPages}
+                            onClick={() => setCurrentPage(v => Math.min(totalPages, v + 1))}
+                            className="p-2 rounded-lg border border-gray-100 dark:border-slate-800 hover:bg-gray-50 dark:hover:bg-slate-850 disabled:opacity-20 cursor-pointer"
+                          >
+                            <ChevronRight size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-6 bg-gray-50/20 dark:bg-slate-950/10 transition-colors">
                     
-                    <div className="flex items-center gap-2">
-                      <button 
-                        disabled={currentPage === 1}
-                        onClick={() => setCurrentPage(v => Math.max(1, v - 1))}
-                        className="p-2 rounded-lg border border-gray-100 dark:border-slate-800 hover:bg-gray-50 dark:hover:bg-slate-850 disabled:opacity-20 cursor-pointer"
+                    {/* Column 1: Em Andamento */}
+                    <div className="space-y-4 flex flex-col h-full">
+                      <div className="flex items-center justify-between bg-purple-50/50 dark:bg-purple-950/10 border border-purple-100/50 dark:border-purple-900/20 px-4 py-3 rounded-2xl">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                          <h3 className="text-xs font-black uppercase text-purple-700 dark:text-purple-400 tracking-wider">Em Andamento</h3>
+                        </div>
+                        <span className="text-[10px] font-black bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-400 px-2 py-0.5 rounded-full">
+                          {filteredProposals.filter(p => p.status === 'Negociação' || p.status === 'Enviado' || p.status === 'Rascunho').length}
+                        </span>
+                      </div>
+                      
+                      <div 
+                        data-column-status="Negociação" 
+                        className={`space-y-3 pr-1 min-h-[400px] flex-1 transition-[background-color,border-color] duration-300 rounded-2xl border-2 ${
+                          activeHoverColumn === 'Negociação' 
+                            ? 'bg-purple-100/30 dark:bg-purple-950/20 border-dashed border-purple-400 dark:border-purple-600' 
+                            : 'border-transparent'
+                        }`}
                       >
-                        <ChevronLeft size={16} />
-                      </button>
-                      <span className="px-2">Página {currentPage} de {totalPages}</span>
-                      <button 
-                        disabled={currentPage === totalPages}
-                        onClick={() => setCurrentPage(v => Math.min(totalPages, v + 1))}
-                        className="p-2 rounded-lg border border-gray-100 dark:border-slate-800 hover:bg-gray-50 dark:hover:bg-slate-850 disabled:opacity-20 cursor-pointer"
+                        {filteredProposals.filter(p => p.status === 'Negociação' || p.status === 'Enviado' || p.status === 'Rascunho').length === 0 ? (
+                          <div className="text-center py-8 text-xs text-gray-400 dark:text-slate-500 bg-white dark:bg-slate-900/40 border border-dashed border-gray-100 dark:border-slate-800 rounded-2xl">
+                            Nenhuma proposta em andamento.
+                          </div>
+                        ) : (
+                          filteredProposals
+                            .filter(p => p.status === 'Negociação' || p.status === 'Enviado' || p.status === 'Rascunho')
+                            .map((prop) => (
+                              <motion.div 
+                                key={prop.id} 
+                                layout
+                                layoutDependency={prop.status}
+                                drag
+                                dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
+                                dragElastic={1}
+                                dragTransition={{ bounceStiffness: 600, bounceDamping: 20 }}
+                                whileDrag={{ 
+                                  rotate: 4, 
+                                  scale: 1.03, 
+                                  zIndex: 50, 
+                                  boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.15)",
+                                  cursor: "grabbing"
+                                }}
+                                onDrag={(event, info) => handleDrag(event, info)}
+                                onDragEnd={(event, info) => handleDragEnd(event, info, prop.id, prop.status)}
+                                className="bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-800/40 p-4 rounded-2xl space-y-3 shadow-sm hover:shadow-md transition-[background-color,border-color,box-shadow] duration-200 group relative cursor-grab active:cursor-grabbing select-none touch-none"
+                              >
+                                <div className="pointer-events-none space-y-3">
+                                  <div className="flex justify-between items-start">
+                                    <div className="overflow-hidden w-full">
+                                      <span className="text-[9px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-wider block truncate">
+                                        {prop.client?.name || 'Cliente s/ nome'}
+                                      </span>
+                                      <h4 className="text-xs font-bold text-gray-900 dark:text-white mt-0.5 truncate">{prop.title}</h4>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex justify-between items-end border-t border-gray-100 dark:border-slate-800/30 pt-2.5">
+                                    <div>
+                                      <p className="text-[8px] font-bold text-gray-400 dark:text-slate-500 uppercase">Valor</p>
+                                      <p className="text-xs font-black text-gray-900 dark:text-white">
+                                        R$ {(prop.commercial_data?.commercial?.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                      </p>
+                                    </div>
+                                    <div className="text-right">
+                                      <p className="text-[8px] font-bold text-gray-400 dark:text-slate-500 uppercase">Status</p>
+                                      <span className="inline-block mt-0.5 scale-90 origin-right">
+                                        <StatusBadge status={prop.status} />
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </motion.div>
+                            ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Column 2: Aprovadas */}
+                    <div className="space-y-4 flex flex-col h-full">
+                      <div className="flex items-center justify-between bg-emerald-50/50 dark:bg-emerald-950/10 border border-emerald-100/50 dark:border-emerald-900/20 px-4 py-3 rounded-2xl">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                          <h3 className="text-xs font-black uppercase text-emerald-700 dark:text-emerald-400 tracking-wider">Aprovadas</h3>
+                        </div>
+                        <span className="text-[10px] font-black bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded-full">
+                          {filteredProposals.filter(p => p.status === 'Concluído').length}
+                        </span>
+                      </div>
+                      
+                      <div 
+                        data-column-status="Concluído" 
+                        className={`space-y-3 pr-1 min-h-[400px] flex-1 transition-[background-color,border-color] duration-300 rounded-2xl border-2 ${
+                          activeHoverColumn === 'Concluído' 
+                            ? 'bg-emerald-100/30 dark:bg-emerald-950/20 border-dashed border-emerald-400 dark:border-emerald-600' 
+                            : 'border-transparent'
+                        }`}
                       >
-                        <ChevronRight size={16} />
-                      </button>
+                        {filteredProposals.filter(p => p.status === 'Concluído').length === 0 ? (
+                          <div className="text-center py-8 text-xs text-gray-400 dark:text-slate-500 bg-white dark:bg-slate-900/40 border border-dashed border-gray-100 dark:border-slate-800 rounded-2xl">
+                            Nenhuma proposta aprovada.
+                          </div>
+                        ) : (
+                          filteredProposals
+                            .filter(p => p.status === 'Concluído')
+                            .map((prop) => (
+                              <motion.div 
+                                key={prop.id} 
+                                layout
+                                layoutDependency={prop.status}
+                                drag
+                                dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
+                                dragElastic={1}
+                                dragTransition={{ bounceStiffness: 600, bounceDamping: 20 }}
+                                whileDrag={{ 
+                                  rotate: 4, 
+                                  scale: 1.03, 
+                                  zIndex: 50, 
+                                  boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.15)",
+                                  cursor: "grabbing"
+                                }}
+                                onDrag={(event, info) => handleDrag(event, info)}
+                                onDragEnd={(event, info) => handleDragEnd(event, info, prop.id, prop.status)}
+                                className="bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-800/40 p-4 rounded-2xl space-y-3 shadow-sm hover:shadow-md transition-[background-color,border-color,box-shadow] duration-200 group relative cursor-grab active:cursor-grabbing select-none touch-none"
+                              >
+                                <div className="pointer-events-none space-y-3">
+                                  <div className="flex justify-between items-start">
+                                    <div className="overflow-hidden w-full">
+                                      <span className="text-[9px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-wider block truncate">
+                                        {prop.client?.name || 'Cliente s/ nome'}
+                                      </span>
+                                      <h4 className="text-xs font-bold text-gray-900 dark:text-white mt-0.5 truncate">{prop.title}</h4>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex justify-between items-end border-t border-gray-100 dark:border-slate-800/30 pt-2.5">
+                                    <div>
+                                      <p className="text-[8px] font-bold text-gray-400 dark:text-slate-500 uppercase">Valor</p>
+                                      <p className="text-xs font-black text-gray-900 dark:text-white">
+                                        R$ {(prop.commercial_data?.commercial?.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                      </p>
+                                    </div>
+                                    <div className="text-right">
+                                      <p className="text-[8px] font-bold text-gray-400 dark:text-slate-500 uppercase">Status</p>
+                                      <span className="inline-block mt-0.5 scale-90 origin-right">
+                                        <StatusBadge status={prop.status} />
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </motion.div>
+                            ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Column 3: Desaprovadas */}
+                    <div className="space-y-4 flex flex-col h-full">
+                      <div className="flex items-center justify-between bg-red-50/50 dark:bg-red-950/10 border border-red-100/50 dark:border-red-900/20 px-4 py-3 rounded-2xl">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                          <h3 className="text-xs font-black uppercase text-red-700 dark:text-red-400 tracking-wider">Desaprovadas</h3>
+                        </div>
+                        <span className="text-[10px] font-black bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-400 px-2 py-0.5 rounded-full">
+                          {filteredProposals.filter(p => p.status === 'Vencido').length}
+                        </span>
+                      </div>
+                      
+                      <div 
+                        data-column-status="Vencido" 
+                        className={`space-y-3 pr-1 min-h-[400px] flex-1 transition-[background-color,border-color] duration-300 rounded-2xl border-2 ${
+                          activeHoverColumn === 'Vencido' 
+                            ? 'bg-red-100/30 dark:bg-red-950/20 border-dashed border-red-400 dark:border-red-600' 
+                            : 'border-transparent'
+                        }`}
+                      >
+                        {filteredProposals.filter(p => p.status === 'Vencido').length === 0 ? (
+                          <div className="text-center py-8 text-xs text-gray-400 dark:text-slate-500 bg-white dark:bg-slate-900/40 border border-dashed border-gray-100 dark:border-slate-800 rounded-2xl">
+                            Nenhuma proposta recusada.
+                          </div>
+                        ) : (
+                          filteredProposals
+                            .filter(p => p.status === 'Vencido')
+                            .map((prop) => (
+                              <motion.div 
+                                key={prop.id} 
+                                layout
+                                layoutDependency={prop.status}
+                                drag
+                                dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
+                                dragElastic={1}
+                                dragTransition={{ bounceStiffness: 600, bounceDamping: 20 }}
+                                whileDrag={{ 
+                                  rotate: 4, 
+                                  scale: 1.03, 
+                                  zIndex: 50, 
+                                  boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.15)",
+                                  cursor: "grabbing"
+                                }}
+                                onDrag={(event, info) => handleDrag(event, info)}
+                                onDragEnd={(event, info) => handleDragEnd(event, info, prop.id, prop.status)}
+                                className="bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-800/40 p-4 rounded-2xl space-y-3 shadow-sm hover:shadow-md transition-[background-color,border-color,box-shadow] duration-200 group relative cursor-grab active:cursor-grabbing select-none touch-none"
+                              >
+                                <div className="pointer-events-none space-y-3">
+                                  <div className="flex justify-between items-start">
+                                    <div className="overflow-hidden w-full">
+                                      <span className="text-[9px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-wider block truncate">
+                                        {prop.client?.name || 'Cliente s/ nome'}
+                                      </span>
+                                      <h4 className="text-xs font-bold text-gray-900 dark:text-white mt-0.5 truncate">{prop.title}</h4>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex justify-between items-end border-t border-gray-100 dark:border-slate-800/30 pt-2.5">
+                                    <div>
+                                      <p className="text-[8px] font-bold text-gray-400 dark:text-slate-500 uppercase">Valor</p>
+                                      <p className="text-xs font-black text-gray-900 dark:text-white">
+                                        R$ {(prop.commercial_data?.commercial?.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                      </p>
+                                    </div>
+                                    <div className="text-right">
+                                      <p className="text-[8px] font-bold text-gray-400 dark:text-slate-500 uppercase">Status</p>
+                                      <span className="inline-block mt-0.5 scale-90 origin-right">
+                                        <StatusBadge status={prop.status} />
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </motion.div>
+                            ))
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1097,8 +1922,9 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
-        </div>
-      </main>
+        )}
+      </div>
+    </main>
 
       {/* Reordering Modal (UNTOUCHED page count and custom ordered downloads) */}
       <AnimatePresence>
@@ -1236,13 +2062,13 @@ function NavItem({ icon: Icon, label, active = false, href = "#" }: { icon: any,
       href={href} 
       className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${
         active 
-          ? 'bg-primary/10 text-primary dark:bg-accent/10 dark:text-accent shadow-sm' 
-          : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-850 hover:text-gray-900 dark:hover:text-white'
+          ? 'bg-[var(--sidebar-nav-active-bg)] text-[var(--sidebar-nav-active-text)] shadow-sm' 
+          : 'text-[var(--sidebar-nav-text)] hover:bg-[var(--sidebar-nav-hover-bg)] hover:text-[var(--sidebar-nav-hover-text)]'
       }`}
     >
       <Icon size={20} />
       <span>{label}</span>
-      {active && <motion.div layoutId="activeNav" className="ml-auto w-1.5 h-1.5 rounded-full bg-primary dark:bg-accent" />}
+      {active && <motion.div layoutId="activeNav" className="ml-auto w-1.5 h-1.5 rounded-full bg-[var(--sidebar-nav-bullet)]" />}
     </a>
   );
 }

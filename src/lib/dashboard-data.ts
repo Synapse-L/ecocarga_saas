@@ -1,4 +1,5 @@
 import { ProposalData } from '@/types/proposal';
+import { askGemini } from '@/lib/ai';
 
 export interface DashboardProposal {
   id: string;
@@ -101,8 +102,24 @@ const generateMockProposals = (): DashboardProposal[] => {
   return mockProposals.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 };
 
-export const getDashboardStats = (realProposals: any[]) => {
-  const mockProposals = generateMockProposals();
+export const getDashboardStats = async (realProposals: any[]) => {
+  let mockProposals: DashboardProposal[] = [];
+  if (typeof window !== 'undefined') {
+    const saved = sessionStorage.getItem('proposalpro_mock_proposals');
+    if (saved) {
+      try {
+        mockProposals = JSON.parse(saved);
+      } catch (e) {
+        mockProposals = generateMockProposals();
+        sessionStorage.setItem('proposalpro_mock_proposals', JSON.stringify(mockProposals));
+      }
+    } else {
+      mockProposals = generateMockProposals();
+      sessionStorage.setItem('proposalpro_mock_proposals', JSON.stringify(mockProposals));
+    }
+  } else {
+    mockProposals = generateMockProposals();
+  }
 
   // Combine real database proposals with mock base proposals
   // Ensure real proposals override mock ones or they just stack together
@@ -272,24 +289,57 @@ export const getDashboardStats = (realProposals: any[]) => {
     }))
     .sort((a, b) => b.value - a.value);
 
-  // 13. Simulated IA Insights
-  const insights = [
-    {
+  // 13. IA Insights dinâmicos (Gemini)
+  const insights: Array<{ type: string; title: string; description: string }> = [];
+  try {
+    const query = 'Forneça insights comerciais curtos e acionáveis baseados nos KPIs atuais.';
+    const aiResponse = await askGemini(query, [], {
+      totalProposals: totalCount,
+      totalProposalsGrowth: countGrowth,
+      totalValue: totalValue,
+      totalValueGrowth: 0,
+      conversionRate: conversionRate,
+      conversionRateGrowth: conversionGrowth,
+      averageTicket: averageTicket,
+      averageTicketGrowth: 0,
+      powerInstalled: totalPowerKW,
+      powerInstalledGrowth: 0,
+      proposalsByStatus: {
+        concluido: closedCount,
+        negociacao: allProposals.filter(p => p.status === 'Negociação').length,
+        apresentada: allProposals.filter(p => p.status === 'Enviado').length,
+        perdido: allProposals.filter(p => p.status === 'Vencido').length
+      },
+      proposalsByProduct: {},
+      topClients: [],
+    } as any);
+    // Assume Gemini returns a JSON array string or markdown list; we parse simple lines
+    const lines = aiResponse.split('\n').filter(l => l.trim().length > 0);
+    lines.forEach(line => {
+      const parts = line.split(' - ');
+      if (parts.length === 3) {
+        insights.push({ type: parts[0].trim(), title: parts[1].trim(), description: parts[2].trim() });
+      }
+    });
+  } catch (e) {
+    console.error('Failed to get AI insights', e);
+    // fallback to static insights
+    insights.push({
       type: 'success',
       title: 'Desempenho Comercial',
       description: `Suas conversões cresceram ${(conversionGrowth >= 0 ? '+' : '')}${conversionGrowth.toFixed(1)}% nos últimos 30 dias.`
-    },
-    {
+    });
+    insights.push({
       type: 'info',
       title: 'Taxa de Fechamento por Valor',
       description: 'Projetos com carregadores rápidos (DC) acima de R$ 80.000 possuem taxa de fechamento 23% maior.'
-    },
-    {
+    });
+    insights.push({
       type: 'revenue',
       title: 'Previsão de Fechamento',
       description: `Você pode fechar aproximadamente R$ ${(potentialValue * 0.45).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} neste mês com base nos negócios em negociação.`
-    }
-  ];
+    });
+  }
 
   // 14. Timeline dynamic events
   const timelineEvents: any[] = [];

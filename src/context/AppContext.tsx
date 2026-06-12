@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 
-type Theme = 'light' | 'dark';
+type Theme = 'light' | 'dark' | 'ecocarga';
 type Language = 'pt' | 'en';
 
 interface AppContextProps {
@@ -50,8 +50,9 @@ const translations = {
     confirmDeleteTemplate: "Tem certeza que deseja excluir este template?",
     confirmDeleteCharger: "Deseja realmente excluir este modelo de carregador?",
     theme: "Tema",
-    themeLight: "Modo Claro",
-    themeDark: "Modo Escuro",
+    themeLight: "Modo Branco",
+    themeDark: "Modo Black",
+    themeEcocarga: "Modo EcoCarga",
     language: "Idioma",
     langPt: "Português",
     langEn: "Inglês",
@@ -178,8 +179,9 @@ const translations = {
     confirmDeleteTemplate: "Are you sure you want to delete this template?",
     confirmDeleteCharger: "Are you sure you want to delete this charger model?",
     theme: "Theme",
-    themeLight: "Light Mode",
-    themeDark: "Dark Mode",
+    themeLight: "White Mode",
+    themeDark: "Black Mode",
+    themeEcocarga: "EcoCarga Mode",
     language: "Language",
     langPt: "Portuguese",
     langEn: "English",
@@ -286,7 +288,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     // 1. Load theme from localStorage
     const savedTheme = localStorage.getItem('theme') as Theme;
-    if (savedTheme === 'dark' || savedTheme === 'light') {
+    if (savedTheme === 'dark' || savedTheme === 'light' || savedTheme === 'ecocarga') {
       setThemeState(savedTheme);
       applyTheme(savedTheme);
     } else {
@@ -347,10 +349,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const applyTheme = (t: Theme) => {
     const root = window.document.documentElement;
+    root.classList.remove('dark', 'ecocarga');
     if (t === 'dark') {
       root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
+    } else if (t === 'ecocarga') {
+      root.classList.add('ecocarga');
     }
   };
 
@@ -370,14 +373,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return false;
 
-      // Upsert in case the profile row doesn't exist yet
+      // Update the profile row matching the user id (aligns with UPDATE policy)
       const { error } = await supabase
         .from('profiles')
-        .upsert({
-          id: user.id,
+        .update({
           full_name: name,
           updated_at: new Date().toISOString()
-        });
+        })
+        .eq('id', user.id);
 
       if (error) throw error;
 
