@@ -105,21 +105,35 @@ const generateMockProposals = (): DashboardProposal[] => {
 export const getDashboardStats = async (realProposals: any[], userId?: string) => {
   let mockProposals: DashboardProposal[] = [];
   if (typeof window !== 'undefined') {
-    const mockKey = userId ? `proposalpro_mock_proposals_${userId}` : 'proposalpro_mock_proposals';
-    const saved = sessionStorage.getItem(mockKey);
-    if (saved) {
-      try {
-        mockProposals = JSON.parse(saved);
-      } catch (e) {
+    const hasRealDataKey = userId ? `proposalpro_has_real_data_${userId}` : 'proposalpro_has_real_data';
+    if (realProposals.length > 0 && userId) {
+      localStorage.setItem(hasRealDataKey, 'true');
+    }
+    const hasRealData = localStorage.getItem(hasRealDataKey) === 'true';
+
+    if (hasRealData) {
+      mockProposals = [];
+    } else {
+      const mockKey = userId ? `proposalpro_mock_proposals_${userId}` : 'proposalpro_mock_proposals';
+      const saved = sessionStorage.getItem(mockKey);
+      if (saved) {
+        try {
+          mockProposals = JSON.parse(saved);
+        } catch (e) {
+          mockProposals = generateMockProposals();
+          sessionStorage.setItem(mockKey, JSON.stringify(mockProposals));
+        }
+      } else {
         mockProposals = generateMockProposals();
         sessionStorage.setItem(mockKey, JSON.stringify(mockProposals));
       }
-    } else {
-      mockProposals = generateMockProposals();
-      sessionStorage.setItem(mockKey, JSON.stringify(mockProposals));
     }
   } else {
-    mockProposals = generateMockProposals();
+    if (realProposals.length > 0) {
+      mockProposals = [];
+    } else {
+      mockProposals = generateMockProposals();
+    }
   }
 
   // Combine real database proposals with mock base proposals

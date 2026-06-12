@@ -256,6 +256,9 @@ export default function Dashboard() {
             const mocks = JSON.parse(saved);
             const filteredMocks = mocks.filter((p: any) => p.id !== id);
             sessionStorage.setItem(mockKey, JSON.stringify(filteredMocks));
+            if (filteredMocks.length === 0 && userId) {
+              localStorage.setItem(`proposalpro_has_real_data_${userId}`, 'true');
+            }
           } catch (e) {
             console.error('Error parsing mock proposals', e);
           }
