@@ -97,6 +97,20 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<'charts' | 'proposals' | 'insights'>('charts');
   const [viewingId, setViewingId] = useState<string | null>(null);
   const [activeHoverColumn, setActiveHoverColumn] = useState<string | null>(null);
+  const [kanbanOrder, setKanbanOrder] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('proposalpro_kanban_order');
+      if (saved) {
+        try {
+          setKanbanOrder(JSON.parse(saved));
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    }
+  }, []);
 
   useEffect(() => {
     fetchDashboardData();
@@ -348,6 +362,93 @@ export default function Dashboard() {
     }
   };
 
+  const sortProposalsByKanbanOrder = (proposalsList: DashboardProposal[]) => {
+    return [...proposalsList].sort((a, b) => {
+      const indexA = kanbanOrder.indexOf(a.id.toString());
+      const indexB = kanbanOrder.indexOf(b.id.toString());
+      
+      if (indexA !== -1 && indexB !== -1) {
+        return indexA - indexB;
+      }
+      if (indexA !== -1) return 1;
+      if (indexB !== -1) return -1;
+      
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+  };
+
+  const handleReorderCard = async (proposalId: string, targetStatus: string, insertIndex: number) => {
+    const proposal = proposals.find(p => p.id === proposalId) || stats?.allProposals?.find((p: any) => p.id === proposalId);
+    if (!proposal) return;
+
+    const oldStatus = proposal.status;
+    const statusChanged = oldStatus !== targetStatus;
+    const allCurrent = stats?.allProposals || [];
+    
+    const updatedList = allCurrent.map((p: any) => {
+      if (p.id === proposalId) {
+        return { ...p, status: targetStatus };
+      }
+      return p;
+    });
+
+    const getColumnKey = (status: string) => {
+      if (status === 'Negociação' || status === 'Enviado' || status === 'Rascunho') {
+        return 'Em Andamento';
+      }
+      if (status === 'Concluído') {
+        return 'Aprovadas';
+      }
+      if (status === 'Vencido') {
+        return 'Desaprovadas';
+      }
+      return status;
+    };
+
+    const targetColumnKey = getColumnKey(targetStatus);
+    
+    const targetColItems = sortProposalsByKanbanOrder(
+      updatedList.filter((p: any) => getColumnKey(p.status) === targetColumnKey && p.id !== proposalId)
+    );
+
+    const draggedItem = updatedList.find((p: any) => p.id === proposalId);
+    if (draggedItem) {
+      targetColItems.splice(insertIndex, 0, draggedItem);
+    }
+
+    const otherColItems = sortProposalsByKanbanOrder(
+      updatedList.filter((p: any) => getColumnKey(p.status) !== targetColumnKey)
+    );
+
+    const newOverallOrder = [
+      ...targetColItems.map((p: any) => p.id.toString()),
+      ...otherColItems.map((p: any) => p.id.toString())
+    ];
+
+    setKanbanOrder(newOverallOrder);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('proposalpro_kanban_order', JSON.stringify(newOverallOrder));
+    }
+
+    if (statusChanged) {
+      await handleUpdateStatus(proposalId, targetStatus);
+    } else {
+      const updatedProposals = proposals.map(p => {
+        if (p.id === proposalId) {
+          return { ...p, status: targetStatus };
+        }
+        return p;
+      });
+      setProposals(updatedProposals);
+      const computed = await getDashboardStats(updatedProposals);
+      setStats(computed);
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('dashboardStats', JSON.stringify(computed));
+        window.dispatchEvent(new Event('dashboardStatsUpdated'));
+      }
+    }
+  };
+
   const handleDrag = (event: any, info: any) => {
     if (typeof window === 'undefined') return;
     const x = info.point.x - window.scrollX;
@@ -404,36 +505,24 @@ export default function Dashboard() {
     }
     
     const targetStatus = bestColumn ? bestColumn.getAttribute('data-column-status') : null;
-    console.log('Kanban Drag End:', { 
-      proposalId, 
-      currentStatus, 
-      targetStatus, 
-      pointer: { x, y }, 
-      minDistance 
-    });
     
     setActiveHoverColumn(null);
     
-    if (targetStatus && minDistance < 300) {
-      const getColumnKey = (status: string) => {
-        if (status === 'Negociação' || status === 'Enviado' || status === 'Rascunho') {
-          return 'Em Andamento';
+    if (targetStatus && minDistance < 300 && bestColumn) {
+      const cardsInColumn = Array.from(bestColumn.querySelectorAll('[data-proposal-id]')) as HTMLElement[];
+      const otherCards = cardsInColumn.filter(cardEl => cardEl.getAttribute('data-proposal-id') !== proposalId.toString());
+      
+      let insertIndex = otherCards.length;
+      for (let i = 0; i < otherCards.length; i++) {
+        const rect = otherCards[i].getBoundingClientRect();
+        const cardMiddleY = rect.top + rect.height / 2;
+        if (y < cardMiddleY) {
+          insertIndex = i;
+          break;
         }
-        if (status === 'Concluído') {
-          return 'Aprovadas';
-        }
-        if (status === 'Vencido') {
-          return 'Desaprovadas';
-        }
-        return status;
-      };
-
-      const currentColumnKey = getColumnKey(currentStatus);
-      const targetColumnKey = getColumnKey(targetStatus);
-
-      if (currentColumnKey !== targetColumnKey) {
-        handleUpdateStatus(proposalId, targetStatus);
       }
+      
+      handleReorderCard(proposalId, targetStatus, insertIndex);
     }
   };
 
@@ -1659,242 +1748,284 @@ export default function Dashboard() {
                     )}
                   </>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-6 bg-gray-50/20 dark:bg-slate-950/10 transition-colors">
-                    
-                    {/* Column 1: Em Andamento */}
-                    <div className="space-y-4 flex flex-col h-full">
-                      <div className="flex items-center justify-between bg-purple-50/50 dark:bg-purple-950/10 border border-purple-100/50 dark:border-purple-900/20 px-4 py-3 rounded-2xl">
-                        <div className="flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-purple-500"></span>
-                          <h3 className="text-xs font-black uppercase text-purple-700 dark:text-purple-400 tracking-wider">Em Andamento</h3>
-                        </div>
-                        <span className="text-[10px] font-black bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-400 px-2 py-0.5 rounded-full">
-                          {filteredProposals.filter(p => p.status === 'Negociação' || p.status === 'Enviado' || p.status === 'Rascunho').length}
-                        </span>
-                      </div>
-                      
-                      <div 
-                        data-column-status="Negociação" 
-                        className={`space-y-3 pr-1 min-h-[400px] flex-1 transition-[background-color,border-color] duration-300 rounded-2xl border-2 ${
-                          activeHoverColumn === 'Negociação' 
-                            ? 'bg-purple-100/30 dark:bg-purple-950/20 border-dashed border-purple-400 dark:border-purple-600' 
-                            : 'border-transparent'
-                        }`}
-                      >
-                        {filteredProposals.filter(p => p.status === 'Negociação' || p.status === 'Enviado' || p.status === 'Rascunho').length === 0 ? (
-                          <div className="text-center py-8 text-xs text-gray-400 dark:text-slate-500 bg-white dark:bg-slate-900/40 border border-dashed border-gray-100 dark:border-slate-800 rounded-2xl">
-                            Nenhuma proposta em andamento.
+                  (() => {
+                    const sortedKanbanProposals = sortProposalsByKanbanOrder(filteredProposals);
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-6 bg-gray-50/20 dark:bg-slate-950/10 transition-colors">
+                        
+                        {/* Column 1: Em Andamento */}
+                        <div className="space-y-4 flex flex-col h-full">
+                          <div className="flex items-center justify-between bg-purple-50/50 dark:bg-purple-950/10 border border-purple-100/50 dark:border-purple-900/20 px-4 py-3 rounded-2xl">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                              <h3 className="text-xs font-black uppercase text-purple-700 dark:text-purple-400 tracking-wider">Em Andamento</h3>
+                            </div>
+                            <span className="text-[10px] font-black bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-400 px-2 py-0.5 rounded-full">
+                              {sortedKanbanProposals.filter(p => p.status === 'Negociação' || p.status === 'Enviado' || p.status === 'Rascunho').length}
+                            </span>
                           </div>
-                        ) : (
-                          filteredProposals
-                            .filter(p => p.status === 'Negociação' || p.status === 'Enviado' || p.status === 'Rascunho')
-                            .map((prop) => (
-                              <motion.div 
-                                key={prop.id} 
-                                layout
-                                layoutDependency={prop.status}
-                                drag
-                                dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
-                                dragElastic={1}
-                                dragTransition={{ bounceStiffness: 600, bounceDamping: 20 }}
-                                whileDrag={{ 
-                                  rotate: 4, 
-                                  scale: 1.03, 
-                                  zIndex: 50, 
-                                  boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.15)",
-                                  cursor: "grabbing"
-                                }}
-                                onDrag={(event, info) => handleDrag(event, info)}
-                                onDragEnd={(event, info) => handleDragEnd(event, info, prop.id, prop.status)}
-                                className="bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-800/40 p-4 rounded-2xl space-y-3 shadow-sm hover:shadow-md transition-[background-color,border-color,box-shadow] duration-200 group relative cursor-grab active:cursor-grabbing select-none touch-none"
-                              >
-                                <div className="pointer-events-none space-y-3">
-                                  <div className="flex justify-between items-start">
-                                    <div className="overflow-hidden w-full">
-                                      <span className="text-[9px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-wider block truncate">
-                                        {prop.client?.name || 'Cliente s/ nome'}
-                                      </span>
-                                      <h4 className="text-xs font-bold text-gray-900 dark:text-white mt-0.5 truncate">{prop.title}</h4>
-                                    </div>
-                                  </div>
+                          
+                          <div 
+                            data-column-status="Negociação" 
+                            className={`space-y-3 pr-1 min-h-[400px] flex-1 transition-[background-color,border-color] duration-300 rounded-2xl border-2 ${
+                              activeHoverColumn === 'Negociação' 
+                                ? 'bg-purple-100/30 dark:bg-purple-950/20 border-dashed border-purple-400 dark:border-purple-600' 
+                                : 'border-transparent'
+                            }`}
+                          >
+                            {sortedKanbanProposals.filter(p => p.status === 'Negociação' || p.status === 'Enviado' || p.status === 'Rascunho').length === 0 ? (
+                              <div className="text-center py-8 text-xs text-gray-400 dark:text-slate-500 bg-white dark:bg-slate-900/40 border border-dashed border-gray-100 dark:border-slate-800 rounded-2xl">
+                                Nenhuma proposta em andamento.
+                              </div>
+                            ) : (
+                              sortedKanbanProposals
+                                .filter(p => p.status === 'Negociação' || p.status === 'Enviado' || p.status === 'Rascunho')
+                                .map((prop) => (
+                                  <motion.div 
+                                    key={prop.id} 
+                                    layout
+                                    layoutDependency={prop.status}
+                                    data-proposal-id={prop.id}
+                                    drag
+                                    dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
+                                    dragElastic={1}
+                                    dragTransition={{ bounceStiffness: 600, bounceDamping: 20 }}
+                                    whileDrag={{ 
+                                      rotate: 4, 
+                                      scale: 1.03, 
+                                      zIndex: 50, 
+                                      boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.15)",
+                                      cursor: "grabbing"
+                                    }}
+                                    onDrag={(event, info) => handleDrag(event, info)}
+                                    onDragEnd={(event, info) => handleDragEnd(event, info, prop.id, prop.status)}
+                                    className="bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-800/40 p-4 rounded-2xl space-y-3 shadow-sm hover:shadow-md transition-[background-color,border-color,box-shadow] duration-200 group relative cursor-grab active:cursor-grabbing select-none touch-none animate-fade-in"
+                                  >
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDelete(prop.id);
+                                      }}
+                                      className="absolute top-3 right-3 p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer z-10 pointer-events-auto"
+                                      title="Excluir Proposta"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
 
-                                  <div className="flex justify-between items-end border-t border-gray-100 dark:border-slate-800/30 pt-2.5">
-                                    <div>
-                                      <p className="text-[8px] font-bold text-gray-400 dark:text-slate-500 uppercase">Valor</p>
-                                      <p className="text-xs font-black text-gray-900 dark:text-white">
-                                        R$ {(prop.commercial_data?.commercial?.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                      </p>
-                                    </div>
-                                    <div className="text-right">
-                                      <p className="text-[8px] font-bold text-gray-400 dark:text-slate-500 uppercase">Status</p>
-                                      <span className="inline-block mt-0.5 scale-90 origin-right">
-                                        <StatusBadge status={prop.status} />
-                                      </span>
-                                    </div>
-                                  </div>
-                                </div>
-                              </motion.div>
-                            ))
-                        )}
-                      </div>
-                    </div>
+                                    <div className="pointer-events-none space-y-3">
+                                      <div className="flex justify-between items-start">
+                                        <div className="overflow-hidden w-full pr-6">
+                                          <span className="text-[9px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-wider block truncate">
+                                            {prop.client?.name || 'Cliente s/ nome'}
+                                          </span>
+                                          <h4 className="text-xs font-bold text-gray-900 dark:text-white mt-0.5 truncate">{prop.title}</h4>
+                                        </div>
+                                      </div>
 
-                    {/* Column 2: Aprovadas */}
-                    <div className="space-y-4 flex flex-col h-full">
-                      <div className="flex items-center justify-between bg-emerald-50/50 dark:bg-emerald-950/10 border border-emerald-100/50 dark:border-emerald-900/20 px-4 py-3 rounded-2xl">
-                        <div className="flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                          <h3 className="text-xs font-black uppercase text-emerald-700 dark:text-emerald-400 tracking-wider">Aprovadas</h3>
-                        </div>
-                        <span className="text-[10px] font-black bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded-full">
-                          {filteredProposals.filter(p => p.status === 'Concluído').length}
-                        </span>
-                      </div>
-                      
-                      <div 
-                        data-column-status="Concluído" 
-                        className={`space-y-3 pr-1 min-h-[400px] flex-1 transition-[background-color,border-color] duration-300 rounded-2xl border-2 ${
-                          activeHoverColumn === 'Concluído' 
-                            ? 'bg-emerald-100/30 dark:bg-emerald-950/20 border-dashed border-emerald-400 dark:border-emerald-600' 
-                            : 'border-transparent'
-                        }`}
-                      >
-                        {filteredProposals.filter(p => p.status === 'Concluído').length === 0 ? (
-                          <div className="text-center py-8 text-xs text-gray-400 dark:text-slate-500 bg-white dark:bg-slate-900/40 border border-dashed border-gray-100 dark:border-slate-800 rounded-2xl">
-                            Nenhuma proposta aprovada.
+                                      <div className="flex justify-between items-end border-t border-gray-100 dark:border-slate-800/30 pt-2.5">
+                                        <div>
+                                          <p className="text-[8px] font-bold text-gray-400 dark:text-slate-500 uppercase">Valor</p>
+                                          <p className="text-xs font-black text-gray-900 dark:text-white">
+                                            R$ {(prop.commercial_data?.commercial?.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                          </p>
+                                        </div>
+                                        <div className="text-right">
+                                          <p className="text-[8px] font-bold text-gray-400 dark:text-slate-500 uppercase">Status</p>
+                                          <span className="inline-block mt-0.5 scale-90 origin-right">
+                                            <StatusBadge status={prop.status} />
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </motion.div>
+                                ))
+                            )}
                           </div>
-                        ) : (
-                          filteredProposals
-                            .filter(p => p.status === 'Concluído')
-                            .map((prop) => (
-                              <motion.div 
-                                key={prop.id} 
-                                layout
-                                layoutDependency={prop.status}
-                                drag
-                                dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
-                                dragElastic={1}
-                                dragTransition={{ bounceStiffness: 600, bounceDamping: 20 }}
-                                whileDrag={{ 
-                                  rotate: 4, 
-                                  scale: 1.03, 
-                                  zIndex: 50, 
-                                  boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.15)",
-                                  cursor: "grabbing"
-                                }}
-                                onDrag={(event, info) => handleDrag(event, info)}
-                                onDragEnd={(event, info) => handleDragEnd(event, info, prop.id, prop.status)}
-                                className="bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-800/40 p-4 rounded-2xl space-y-3 shadow-sm hover:shadow-md transition-[background-color,border-color,box-shadow] duration-200 group relative cursor-grab active:cursor-grabbing select-none touch-none"
-                              >
-                                <div className="pointer-events-none space-y-3">
-                                  <div className="flex justify-between items-start">
-                                    <div className="overflow-hidden w-full">
-                                      <span className="text-[9px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-wider block truncate">
-                                        {prop.client?.name || 'Cliente s/ nome'}
-                                      </span>
-                                      <h4 className="text-xs font-bold text-gray-900 dark:text-white mt-0.5 truncate">{prop.title}</h4>
-                                    </div>
-                                  </div>
-
-                                  <div className="flex justify-between items-end border-t border-gray-100 dark:border-slate-800/30 pt-2.5">
-                                    <div>
-                                      <p className="text-[8px] font-bold text-gray-400 dark:text-slate-500 uppercase">Valor</p>
-                                      <p className="text-xs font-black text-gray-900 dark:text-white">
-                                        R$ {(prop.commercial_data?.commercial?.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                      </p>
-                                    </div>
-                                    <div className="text-right">
-                                      <p className="text-[8px] font-bold text-gray-400 dark:text-slate-500 uppercase">Status</p>
-                                      <span className="inline-block mt-0.5 scale-90 origin-right">
-                                        <StatusBadge status={prop.status} />
-                                      </span>
-                                    </div>
-                                  </div>
-                                </div>
-                              </motion.div>
-                            ))
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Column 3: Desaprovadas */}
-                    <div className="space-y-4 flex flex-col h-full">
-                      <div className="flex items-center justify-between bg-red-50/50 dark:bg-red-950/10 border border-red-100/50 dark:border-red-900/20 px-4 py-3 rounded-2xl">
-                        <div className="flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-red-500"></span>
-                          <h3 className="text-xs font-black uppercase text-red-700 dark:text-red-400 tracking-wider">Desaprovadas</h3>
                         </div>
-                        <span className="text-[10px] font-black bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-400 px-2 py-0.5 rounded-full">
-                          {filteredProposals.filter(p => p.status === 'Vencido').length}
-                        </span>
-                      </div>
-                      
-                      <div 
-                        data-column-status="Vencido" 
-                        className={`space-y-3 pr-1 min-h-[400px] flex-1 transition-[background-color,border-color] duration-300 rounded-2xl border-2 ${
-                          activeHoverColumn === 'Vencido' 
-                            ? 'bg-red-100/30 dark:bg-red-950/20 border-dashed border-red-400 dark:border-red-600' 
-                            : 'border-transparent'
-                        }`}
-                      >
-                        {filteredProposals.filter(p => p.status === 'Vencido').length === 0 ? (
-                          <div className="text-center py-8 text-xs text-gray-400 dark:text-slate-500 bg-white dark:bg-slate-900/40 border border-dashed border-gray-100 dark:border-slate-800 rounded-2xl">
-                            Nenhuma proposta recusada.
-                          </div>
-                        ) : (
-                          filteredProposals
-                            .filter(p => p.status === 'Vencido')
-                            .map((prop) => (
-                              <motion.div 
-                                key={prop.id} 
-                                layout
-                                layoutDependency={prop.status}
-                                drag
-                                dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
-                                dragElastic={1}
-                                dragTransition={{ bounceStiffness: 600, bounceDamping: 20 }}
-                                whileDrag={{ 
-                                  rotate: 4, 
-                                  scale: 1.03, 
-                                  zIndex: 50, 
-                                  boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.15)",
-                                  cursor: "grabbing"
-                                }}
-                                onDrag={(event, info) => handleDrag(event, info)}
-                                onDragEnd={(event, info) => handleDragEnd(event, info, prop.id, prop.status)}
-                                className="bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-800/40 p-4 rounded-2xl space-y-3 shadow-sm hover:shadow-md transition-[background-color,border-color,box-shadow] duration-200 group relative cursor-grab active:cursor-grabbing select-none touch-none"
-                              >
-                                <div className="pointer-events-none space-y-3">
-                                  <div className="flex justify-between items-start">
-                                    <div className="overflow-hidden w-full">
-                                      <span className="text-[9px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-wider block truncate">
-                                        {prop.client?.name || 'Cliente s/ nome'}
-                                      </span>
-                                      <h4 className="text-xs font-bold text-gray-900 dark:text-white mt-0.5 truncate">{prop.title}</h4>
-                                    </div>
-                                  </div>
 
-                                  <div className="flex justify-between items-end border-t border-gray-100 dark:border-slate-800/30 pt-2.5">
-                                    <div>
-                                      <p className="text-[8px] font-bold text-gray-400 dark:text-slate-500 uppercase">Valor</p>
-                                      <p className="text-xs font-black text-gray-900 dark:text-white">
-                                        R$ {(prop.commercial_data?.commercial?.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                      </p>
+                        {/* Column 2: Aprovadas */}
+                        <div className="space-y-4 flex flex-col h-full">
+                          <div className="flex items-center justify-between bg-emerald-50/50 dark:bg-emerald-950/10 border border-emerald-100/50 dark:border-emerald-900/20 px-4 py-3 rounded-2xl">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                              <h3 className="text-xs font-black uppercase text-emerald-700 dark:text-emerald-400 tracking-wider">Aprovadas</h3>
+                            </div>
+                            <span className="text-[10px] font-black bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded-full">
+                              {sortedKanbanProposals.filter(p => p.status === 'Concluído').length}
+                            </span>
+                          </div>
+                          
+                          <div 
+                            data-column-status="Concluído" 
+                            className={`space-y-3 pr-1 min-h-[400px] flex-1 transition-[background-color,border-color] duration-300 rounded-2xl border-2 ${
+                              activeHoverColumn === 'Concluído' 
+                                ? 'bg-emerald-100/30 dark:bg-emerald-950/20 border-dashed border-emerald-400 dark:border-emerald-600' 
+                                : 'border-transparent'
+                            }`}
+                          >
+                            {sortedKanbanProposals.filter(p => p.status === 'Concluído').length === 0 ? (
+                              <div className="text-center py-8 text-xs text-gray-400 dark:text-slate-500 bg-white dark:bg-slate-900/40 border border-dashed border-gray-100 dark:border-slate-800 rounded-2xl">
+                                Nenhuma proposta aprovada.
+                              </div>
+                            ) : (
+                              sortedKanbanProposals
+                                .filter(p => p.status === 'Concluído')
+                                .map((prop) => (
+                                  <motion.div 
+                                    key={prop.id} 
+                                    layout
+                                    layoutDependency={prop.status}
+                                    data-proposal-id={prop.id}
+                                    drag
+                                    dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
+                                    dragElastic={1}
+                                    dragTransition={{ bounceStiffness: 600, bounceDamping: 20 }}
+                                    whileDrag={{ 
+                                      rotate: 4, 
+                                      scale: 1.03, 
+                                      zIndex: 50, 
+                                      boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.15)",
+                                      cursor: "grabbing"
+                                    }}
+                                    onDrag={(event, info) => handleDrag(event, info)}
+                                    onDragEnd={(event, info) => handleDragEnd(event, info, prop.id, prop.status)}
+                                    className="bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-800/40 p-4 rounded-2xl space-y-3 shadow-sm hover:shadow-md transition-[background-color,border-color,box-shadow] duration-200 group relative cursor-grab active:cursor-grabbing select-none touch-none animate-fade-in"
+                                  >
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDelete(prop.id);
+                                      }}
+                                      className="absolute top-3 right-3 p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer z-10 pointer-events-auto"
+                                      title="Excluir Proposta"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+
+                                    <div className="pointer-events-none space-y-3">
+                                      <div className="flex justify-between items-start">
+                                        <div className="overflow-hidden w-full pr-6">
+                                          <span className="text-[9px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-wider block truncate">
+                                            {prop.client?.name || 'Cliente s/ nome'}
+                                          </span>
+                                          <h4 className="text-xs font-bold text-gray-900 dark:text-white mt-0.5 truncate">{prop.title}</h4>
+                                        </div>
+                                      </div>
+
+                                      <div className="flex justify-between items-end border-t border-gray-100 dark:border-slate-800/30 pt-2.5">
+                                        <div>
+                                          <p className="text-[8px] font-bold text-gray-400 dark:text-slate-500 uppercase">Valor</p>
+                                          <p className="text-xs font-black text-gray-900 dark:text-white">
+                                            R$ {(prop.commercial_data?.commercial?.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                          </p>
+                                        </div>
+                                        <div className="text-right">
+                                          <p className="text-[8px] font-bold text-gray-400 dark:text-slate-500 uppercase">Status</p>
+                                          <span className="inline-block mt-0.5 scale-90 origin-right">
+                                            <StatusBadge status={prop.status} />
+                                          </span>
+                                        </div>
+                                      </div>
                                     </div>
-                                    <div className="text-right">
-                                      <p className="text-[8px] font-bold text-gray-400 dark:text-slate-500 uppercase">Status</p>
-                                      <span className="inline-block mt-0.5 scale-90 origin-right">
-                                        <StatusBadge status={prop.status} />
-                                      </span>
+                                  </motion.div>
+                                ))
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Column 3: Desaprovadas */}
+                        <div className="space-y-4 flex flex-col h-full">
+                          <div className="flex items-center justify-between bg-red-50/50 dark:bg-red-950/10 border border-red-100/50 dark:border-red-900/20 px-4 py-3 rounded-2xl">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                              <h3 className="text-xs font-black uppercase text-red-700 dark:text-red-400 tracking-wider">Desaprovadas</h3>
+                            </div>
+                            <span className="text-[10px] font-black bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-400 px-2 py-0.5 rounded-full">
+                              {sortedKanbanProposals.filter(p => p.status === 'Vencido').length}
+                            </span>
+                          </div>
+                          
+                          <div 
+                            data-column-status="Vencido" 
+                            className={`space-y-3 pr-1 min-h-[400px] flex-1 transition-[background-color,border-color] duration-300 rounded-2xl border-2 ${
+                              activeHoverColumn === 'Vencido' 
+                                ? 'bg-red-100/30 dark:bg-red-950/20 border-dashed border-red-400 dark:border-red-600' 
+                                : 'border-transparent'
+                            }`}
+                          >
+                            {sortedKanbanProposals.filter(p => p.status === 'Vencido').length === 0 ? (
+                              <div className="text-center py-8 text-xs text-gray-400 dark:text-slate-500 bg-white dark:bg-slate-900/40 border border-dashed border-gray-100 dark:border-slate-800 rounded-2xl">
+                                Nenhuma proposta recusada.
+                              </div>
+                            ) : (
+                              sortedKanbanProposals
+                                .filter(p => p.status === 'Vencido')
+                                .map((prop) => (
+                                  <motion.div 
+                                    key={prop.id} 
+                                    layout
+                                    layoutDependency={prop.status}
+                                    data-proposal-id={prop.id}
+                                    drag
+                                    dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
+                                    dragElastic={1}
+                                    dragTransition={{ bounceStiffness: 600, bounceDamping: 20 }}
+                                    whileDrag={{ 
+                                      rotate: 4, 
+                                      scale: 1.03, 
+                                      zIndex: 50, 
+                                      boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.15)",
+                                      cursor: "grabbing"
+                                    }}
+                                    onDrag={(event, info) => handleDrag(event, info)}
+                                    onDragEnd={(event, info) => handleDragEnd(event, info, prop.id, prop.status)}
+                                    className="bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-800/40 p-4 rounded-2xl space-y-3 shadow-sm hover:shadow-md transition-[background-color,border-color,box-shadow] duration-200 group relative cursor-grab active:cursor-grabbing select-none touch-none animate-fade-in"
+                                  >
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDelete(prop.id);
+                                      }}
+                                      className="absolute top-3 right-3 p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer z-10 pointer-events-auto"
+                                      title="Excluir Proposta"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+
+                                    <div className="pointer-events-none space-y-3">
+                                      <div className="flex justify-between items-start">
+                                        <div className="overflow-hidden w-full pr-6">
+                                          <span className="text-[9px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-wider block truncate">
+                                            {prop.client?.name || 'Cliente s/ nome'}
+                                          </span>
+                                          <h4 className="text-xs font-bold text-gray-900 dark:text-white mt-0.5 truncate">{prop.title}</h4>
+                                        </div>
+                                      </div>
+
+                                      <div className="flex justify-between items-end border-t border-gray-100 dark:border-slate-800/30 pt-2.5">
+                                        <div>
+                                          <p className="text-[8px] font-bold text-gray-400 dark:text-slate-500 uppercase">Valor</p>
+                                          <p className="text-xs font-black text-gray-900 dark:text-white">
+                                            R$ {(prop.commercial_data?.commercial?.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                          </p>
+                                        </div>
+                                        <div className="text-right">
+                                          <p className="text-[8px] font-bold text-gray-400 dark:text-slate-500 uppercase">Status</p>
+                                          <span className="inline-block mt-0.5 scale-90 origin-right">
+                                            <StatusBadge status={prop.status} />
+                                          </span>
+                                        </div>
+                                      </div>
                                     </div>
-                                  </div>
-                                </div>
-                              </motion.div>
-                            ))
-                        )}
+                                  </motion.div>
+                                ))
+                            )}
+                          </div>
+                        </div>
+
                       </div>
-                    </div>
-                  </div>
+                    );
+                  })()
                 )}
               </div>
             </div>
