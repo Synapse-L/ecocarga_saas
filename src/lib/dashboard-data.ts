@@ -102,20 +102,21 @@ const generateMockProposals = (): DashboardProposal[] => {
   return mockProposals.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 };
 
-export const getDashboardStats = async (realProposals: any[]) => {
+export const getDashboardStats = async (realProposals: any[], userId?: string) => {
   let mockProposals: DashboardProposal[] = [];
   if (typeof window !== 'undefined') {
-    const saved = sessionStorage.getItem('proposalpro_mock_proposals');
+    const mockKey = userId ? `proposalpro_mock_proposals_${userId}` : 'proposalpro_mock_proposals';
+    const saved = sessionStorage.getItem(mockKey);
     if (saved) {
       try {
         mockProposals = JSON.parse(saved);
       } catch (e) {
         mockProposals = generateMockProposals();
-        sessionStorage.setItem('proposalpro_mock_proposals', JSON.stringify(mockProposals));
+        sessionStorage.setItem(mockKey, JSON.stringify(mockProposals));
       }
     } else {
       mockProposals = generateMockProposals();
-      sessionStorage.setItem('proposalpro_mock_proposals', JSON.stringify(mockProposals));
+      sessionStorage.setItem(mockKey, JSON.stringify(mockProposals));
     }
   } else {
     mockProposals = generateMockProposals();

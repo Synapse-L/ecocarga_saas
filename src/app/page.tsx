@@ -98,19 +98,22 @@ export default function Dashboard() {
   const [viewingId, setViewingId] = useState<string | null>(null);
   const [activeHoverColumn, setActiveHoverColumn] = useState<string | null>(null);
   const [kanbanOrder, setKanbanOrder] = useState<string[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('proposalpro_kanban_order');
+    if (userId && typeof window !== 'undefined') {
+      const saved = localStorage.getItem(`proposalpro_kanban_order_${userId}`);
       if (saved) {
         try {
           setKanbanOrder(JSON.parse(saved));
         } catch (e) {
           console.error(e);
         }
+      } else {
+        setKanbanOrder([]);
       }
     }
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     fetchDashboardData();
@@ -134,6 +137,7 @@ export default function Dashboard() {
         router.push('/login');
         return;
       }
+      setUserId(user.id);
 
       // Fetch Proposals
       const { data: proposalData } = await supabase
@@ -149,7 +153,7 @@ export default function Dashboard() {
       setProposals(realData);
       
       // Calculate commercial intelligence stats
-      const computed = await getDashboardStats(realData);
+      const computed = await getDashboardStats(realData, user.id);
       setStats(computed);
       if (typeof window !== 'undefined') {
         sessionStorage.setItem('dashboardStats', JSON.stringify(computed));
@@ -164,6 +168,9 @@ export default function Dashboard() {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('dashboardStats');
+    }
     router.push('/login');
   };
 
@@ -242,19 +249,20 @@ export default function Dashboard() {
       
       // Update sessionStorage database of mocks
       if (typeof window !== 'undefined') {
-        const saved = sessionStorage.getItem('proposalpro_mock_proposals');
+        const mockKey = userId ? `proposalpro_mock_proposals_${userId}` : 'proposalpro_mock_proposals';
+        const saved = sessionStorage.getItem(mockKey);
         if (saved) {
           try {
             const mocks = JSON.parse(saved);
             const filteredMocks = mocks.filter((p: any) => p.id !== id);
-            sessionStorage.setItem('proposalpro_mock_proposals', JSON.stringify(filteredMocks));
+            sessionStorage.setItem(mockKey, JSON.stringify(filteredMocks));
           } catch (e) {
             console.error('Error parsing mock proposals', e);
           }
         }
       }
 
-      const computed = await getDashboardStats(updatedProposals);
+      const computed = await getDashboardStats(updatedProposals, userId || undefined);
       setStats(computed);
       if (typeof window !== 'undefined') {
         sessionStorage.setItem('dashboardStats', JSON.stringify(computed));
@@ -294,7 +302,8 @@ export default function Dashboard() {
     if (id.toString().startsWith('mock-')) {
       let updatedMocks = [];
       if (typeof window !== 'undefined') {
-        const saved = sessionStorage.getItem('proposalpro_mock_proposals');
+        const mockKey = userId ? `proposalpro_mock_proposals_${userId}` : 'proposalpro_mock_proposals';
+        const saved = sessionStorage.getItem(mockKey);
         if (saved) {
           try {
             const mocks = JSON.parse(saved);
@@ -304,7 +313,7 @@ export default function Dashboard() {
               }
               return p;
             });
-            sessionStorage.setItem('proposalpro_mock_proposals', JSON.stringify(updatedMocks));
+            sessionStorage.setItem(mockKey, JSON.stringify(updatedMocks));
           } catch (e) {
             console.error('Error parsing mock proposals', e);
           }
@@ -312,7 +321,7 @@ export default function Dashboard() {
       }
       
       // Update UI and stats for mocks immediately
-      const computed = await getDashboardStats(proposals);
+      const computed = await getDashboardStats(proposals, userId || undefined);
       setStats(computed);
       if (typeof window !== 'undefined') {
         sessionStorage.setItem('dashboardStats', JSON.stringify(computed));
@@ -331,7 +340,7 @@ export default function Dashboard() {
     setProposals(updatedProposals);
 
     // Recalculate and update stats immediately
-    const computed = await getDashboardStats(updatedProposals);
+    const computed = await getDashboardStats(updatedProposals, userId || undefined);
     setStats(computed);
     if (typeof window !== 'undefined') {
       sessionStorage.setItem('dashboardStats', JSON.stringify(computed));
@@ -427,7 +436,8 @@ export default function Dashboard() {
 
     setKanbanOrder(newOverallOrder);
     if (typeof window !== 'undefined') {
-      localStorage.setItem('proposalpro_kanban_order', JSON.stringify(newOverallOrder));
+      const kanbanKey = userId ? `proposalpro_kanban_order_${userId}` : 'proposalpro_kanban_order';
+      localStorage.setItem(kanbanKey, JSON.stringify(newOverallOrder));
     }
 
     if (statusChanged) {
@@ -440,7 +450,7 @@ export default function Dashboard() {
         return p;
       });
       setProposals(updatedProposals);
-      const computed = await getDashboardStats(updatedProposals);
+      const computed = await getDashboardStats(updatedProposals, userId || undefined);
       setStats(computed);
       if (typeof window !== 'undefined') {
         sessionStorage.setItem('dashboardStats', JSON.stringify(computed));
