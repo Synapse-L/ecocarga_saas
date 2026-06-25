@@ -4,6 +4,8 @@ CREATE TABLE profiles (
   full_name TEXT,
   company_name TEXT,
   avatar_url TEXT,
+  role TEXT DEFAULT 'vendedor',
+  completed_tour BOOLEAN DEFAULT false,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -48,9 +50,20 @@ ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
 ALTER TABLE templates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE proposals ENABLE ROW LEVEL SECURITY;
 
+-- Helper security function to check if user is admin (bypasses RLS recursion)
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = auth.uid() AND role = 'admin'
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 -- Policies for profiles
-CREATE POLICY "Users can view own profile" ON profiles FOR SELECT USING (auth.uid() = id);
-CREATE POLICY "Users can update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Users can view own or admin views all" ON profiles FOR SELECT USING (auth.uid() = id OR public.is_admin());
+CREATE POLICY "Users can update own or admin updates all" ON profiles FOR UPDATE USING (auth.uid() = id OR public.is_admin());
 
 -- Policies for clients
 CREATE POLICY "Users can manage own clients" ON clients FOR ALL USING (auth.uid() = user_id);

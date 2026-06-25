@@ -1,92 +1,64 @@
-import { createServerClient, type CookieOptions } from '@supabase/ssr'
-import { NextResponse, type NextRequest } from 'next/server'
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 
-export async function middleware(request: NextRequest) {
-  let response = NextResponse.next({
-    request: {
-      headers: request.headers,
-    },
-  })
+// ============================================================
+// MIDDLEWARE DE SEGURANÇA E RATE LIMITING (ANTI-DDOS)
+// ============================================================
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key',
-    {
-      cookies: {
-        get(name: string) {
-          return request.cookies.get(name)?.value
-        },
-        set(name: string, value: string, options: CookieOptions) {
-          request.cookies.set({
-            name,
-            value,
-            ...options,
-          })
-          response = NextResponse.next({
-            request: {
-              headers: request.headers,
-            },
-          })
-          response.cookies.set({
-            name,
-            value,
-            ...options,
-          })
-        },
-        remove(name: string, options: CookieOptions) {
-          request.cookies.set({
-            name,
-            value: '',
-            ...options,
-          })
-          response = NextResponse.next({
-            request: {
-              headers: request.headers,
-            },
-          })
-          response.cookies.set({
-            name,
-            value: '',
-            ...options,
-          })
-        },
-      },
+// Mapa em memória para armazenar o histórico de requisições de cada IP
+// Chave: IP do cliente, Valor: { count: total de requisições, resetTime: carimbo de data/hora de reinício }
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+
+// Configurações do Limite
+const LIMIT = 60;          // Máximo de 60 requisições
+const WINDOW_MS = 60 * 1000; // Janela de tempo de 1 minuto (60.000 ms)
+
+export function middleware(req: NextRequest) {
+  // Aplicar proteção apenas em rotas de API (/api/*) para poupar processamento
+  if (req.nextUrl.pathname.startsWith('/api')) {
+    // Captura o IP do cliente de cabeçalhos de proxy (como Vercel/Cloudflare) ou IP direto da conexão
+    const ip = req.headers.get('x-forwarded-for') || (req as any).ip || '127.0.0.1';
+    
+    const now = Date.now();
+    const rateData = rateLimitMap.get(ip);
+
+    if (!rateData) {
+      // Primeira requisição deste IP na janela de tempo
+      rateLimitMap.set(ip, { count: 1, resetTime: now + WINDOW_MS });
+    } else {
+      if (now > rateData.resetTime) {
+        // Se a janela de tempo expirou, reinicia o contador e define nova expiração
+        rateLimitMap.set(ip, { count: 1, resetTime: now + WINDOW_MS });
+      } else {
+        // Incrementa o contador de requisições na janela atual
+        rateData.count += 1;
+        
+        // Se ultrapassar o limite, bloqueia a chamada com HTTP 429
+        if (rateData.count > LIMIT) {
+          const secondsLeft = Math.ceil((rateData.resetTime - now) / 1000);
+          return new NextResponse(
+            JSON.stringify({ 
+              error: 'Muitas requisições. Proteção anti-DDoS ativa. Tente novamente mais tarde.',
+              retryAfterSeconds: secondsLeft
+            }),
+            {
+              status: 429,
+              headers: {
+                'Content-Type': 'application/json',
+                'Retry-After': secondsLeft.toString(),
+              },
+            }
+          );
+        }
+      }
     }
-  )
-
-  const { data: { user } } = await supabase.auth.getUser()
-
-  // Protect dashboard routes
-  // Add other protected routes here
-  const protectedRoutes = ['/', '/proposals', '/templates', '/clients']
-  const isProtectedRoute = protectedRoutes.some(route => 
-    request.nextUrl.pathname === route || request.nextUrl.pathname.startsWith(route + '/')
-  )
-
-  // Auth routes should redirect to dashboard if already logged in
-  const authRoutes = ['/login', '/signup']
-  const isAuthRoute = authRoutes.includes(request.nextUrl.pathname)
-
-  if (isProtectedRoute && !user) {
-    return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  if (isAuthRoute && user) {
-    return NextResponse.redirect(new URL('/', request.url))
-  }
-
-  return response
+  // Permite que a requisição siga para a API normal se estiver tudo certo
+  return NextResponse.next();
 }
 
+// Configura o middleware para rodar apenas nas rotas de API
 export const config = {
-  matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * Feel free to modify this pattern to include more paths.
-     */
-    '/((?!_next/static|_next/image|favicon.ico|api/upload).*)',
-  ],
-}
+  matcher: '/api/:path*',
+};

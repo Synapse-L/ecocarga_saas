@@ -16,8 +16,12 @@ import {
   LayoutDashboard,
   LogOut,
   Cpu,
-  Sparkles
+  Sparkles,
+  Sliders,
+  Shield,
+  AlertCircle
 } from 'lucide-react';
+import AdminPermissions from '@/components/AdminPermissions';
 import { motion } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
@@ -35,6 +39,40 @@ export default function SettingsPage() {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
+
+  const [promotionKey, setPromotionKey] = useState('');
+  const [promoting, setPromoting] = useState(false);
+  const [promoteError, setPromoteError] = useState<string | null>(null);
+  const [promoteSuccess, setPromoteSuccess] = useState<string | null>(null);
+
+  const handleRequestAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPromoting(true);
+    setPromoteError(null);
+    setPromoteSuccess(null);
+
+    try {
+      const res = await fetch('/api/admin/promote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: promotionKey })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao processar promoção.');
+
+      setPromoteSuccess('Parabéns! Sua conta foi promovida a Administrador com sucesso. Recarregando permissões...');
+      setPromotionKey('');
+      
+      setTimeout(() => {
+        window.location.reload();
+      }, 2000);
+    } catch (err: any) {
+      setPromoteError(err.message || 'Chave incorreta. Tente novamente.');
+    } finally {
+      setPromoting(false);
+    }
+  };
 
   useEffect(() => {
     if (profile) {
@@ -99,8 +137,12 @@ export default function SettingsPage() {
             <NavItem icon={LayoutDashboard} label={t('dashboard')} href="/" />
             <NavItem icon={FileText} label={t('proposals')} href="#" />
             <NavItem icon={Users} label={t('clients')} href="#" />
-            <NavItem icon={Cpu} label={t('chargers')} href="/models" />
-            <NavItem icon={Settings} label={t('templates')} href="/templates" />
+            {profile?.role === 'admin' && (
+              <>
+                <NavItem icon={Cpu} label={t('chargers')} href="/models" />
+                <NavItem icon={Sliders} label={t('templates')} href="/templates" />
+              </>
+            )}
             <NavItem icon={Settings} label={t('settings')} href="/settings" active />
           </nav>
         </div>
@@ -294,6 +336,73 @@ export default function SettingsPage() {
               </div>
             </form>
           </motion.div>
+
+          {/* SEÇÃO ADM E SEGURANÇA */}
+          <div className="mt-8">
+            {profile?.role === 'admin' ? (
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-white dark:bg-slate-900 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm p-8 transition-colors duration-300"
+              >
+                <AdminPermissions />
+              </motion.div>
+            ) : (
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-white dark:bg-slate-900 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm p-8 space-y-6 transition-colors duration-300"
+              >
+                <div className="flex items-center gap-2 pb-2 border-b border-gray-100 dark:border-slate-800">
+                  <Shield className="text-[#004D31] dark:text-[#B2D235]" size={20} />
+                  <h2 className="text-lg font-bold text-gray-900 dark:text-white">Solicitar Acesso de Administrador</h2>
+                </div>
+
+                <p className="text-sm text-gray-500 dark:text-slate-400">
+                  Digite a Chave Mestra Corporativa para promover sua conta a Administrador. Isso liberará acesso aos painéis de Templates, Modelos de Carregadores e permissões de vendedores.
+                </p>
+
+                <form onSubmit={handleRequestAdmin} className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase ml-1">
+                      Chave Mestra Corporativa
+                    </label>
+                    <input 
+                      type="password" 
+                      required
+                      value={promotionKey}
+                      onChange={(e) => setPromotionKey(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl border border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-950 text-gray-950 dark:text-white focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-[#004D31]/10 dark:focus:ring-[#B2D235]/10 transition-all text-sm"
+                      placeholder="••••••••••••"
+                    />
+                  </div>
+
+                  {promoteError && (
+                    <div className="text-sm text-red-500 font-semibold bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900 rounded-xl p-3 flex items-center gap-2">
+                      <AlertCircle size={16} />
+                      {promoteError}
+                    </div>
+                  )}
+
+                  {promoteSuccess && (
+                    <div className="text-sm text-emerald-600 dark:text-emerald-400 font-semibold bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900 rounded-xl p-3 flex items-center gap-2">
+                      <CheckCircle size={16} />
+                      {promoteSuccess}
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={promoting || !promotionKey}
+                    className="bg-[#004D31] text-white px-6 py-2.5 rounded-xl font-bold hover:opacity-90 active:scale-[0.98] transition-all flex items-center gap-2 text-sm shadow-sm cursor-pointer disabled:opacity-50"
+                  >
+                    {promoting ? <Loader2 className="animate-spin" size={18} /> : <Shield size={18} />}
+                    {promoting ? 'Promovendo...' : 'Solicitar Acesso Admin'}
+                  </button>
+                </form>
+              </motion.div>
+            )}
+          </div>
         </div>
       </main>
     </div>

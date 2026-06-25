@@ -317,10 +317,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (data) {
           setProfile(data);
         } else {
-          // Fallback if profile row is missing
+          // Fallback e criação automática do perfil se estiver faltando no banco
           const { data: { user } } = await supabase.auth.getUser();
           if (user) {
-            setProfile({ full_name: user.email?.split('@')[0] });
+            const defaultName = user.email?.split('@')[0] || 'Vendedor';
+            
+            // Tenta inserir o perfil padrão
+            const { data: newProfile, error: insertErr } = await supabase
+              .from('profiles')
+              .insert({
+                id: userId,
+                full_name: defaultName,
+                company_name: 'EcoCarga',
+                role: 'vendedor',
+                completed_tour: false
+              })
+              .select()
+              .single();
+
+            if (!insertErr && newProfile) {
+              setProfile(newProfile);
+            } else {
+              if (insertErr) {
+                console.error('Erro detalhado do insert do perfil no Supabase:', insertErr);
+              }
+              // Se der erro de permissão ou outro, usa fallback em memória
+              setProfile({ id: userId, full_name: defaultName, role: 'vendedor', completed_tour: false });
+            }
           }
         }
       } catch (err) {

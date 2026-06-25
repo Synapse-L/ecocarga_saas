@@ -14,6 +14,7 @@ export interface DashboardProposal {
   template?: {
     file_url: string;
   };
+  client_signed_at?: string | null;
 }
 
 // Generates 25 realistic historical proposals spread over the last 12 months
@@ -147,7 +148,8 @@ export const getDashboardStats = async (realProposals: any[], userId?: string) =
     updated_at: p.updated_at,
     client: p.client ? { name: p.client.name } : { name: p.commercial_data?.client?.name || 'Cliente s/ nome' },
     commercial_data: p.commercial_data,
-    template: p.template
+    template: p.template,
+    client_signed_at: p.client_signed_at
   }));
 
   const allProposals = [...formattedRealProposals, ...mockProposals];

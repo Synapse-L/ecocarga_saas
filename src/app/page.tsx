@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   FileText, 
   Plus, 
@@ -30,7 +30,11 @@ import {
   ChevronRight,
   ArrowUpDown,
   Filter,
-  Calendar
+  Calendar,
+  Link2,
+  PenLine,
+  GraduationCap,
+  Keyboard
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
@@ -40,6 +44,8 @@ import { ProposalPage6 } from '@/components/ProposalPage6';
 import { ProposalCover } from '@/components/ProposalCover';
 import { useApp } from '@/context/AppContext';
 import { getDashboardStats, DashboardProposal } from '@/lib/dashboard-data';
+import { useToast } from '@/components/Toast';
+import { OnboardingTour, useOnboarding } from '@/components/OnboardingTour';
 import {
   AreaChart,
   Area,
@@ -68,6 +74,8 @@ type ReorderPage = {
 
 export default function Dashboard() {
   const { profile, t, theme } = useApp();
+  const toast = useToast();
+  const { restart: restartOnboarding } = useOnboarding();
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [proposals, setProposals] = useState<any[]>([]);
@@ -99,6 +107,9 @@ export default function Dashboard() {
   const [activeHoverColumn, setActiveHoverColumn] = useState<string | null>(null);
   const [kanbanOrder, setKanbanOrder] = useState<string[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
+  const [kanbanSearch, setKanbanSearch] = useState('');
+  const [sharingId, setSharingId] = useState<string | null>(null);
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   useEffect(() => {
     if (userId && typeof window !== 'undefined') {
@@ -126,6 +137,22 @@ export default function Dashboard() {
     window.addEventListener('click', handleOutsideClick);
     return () => window.removeEventListener('click', handleOutsideClick);
   }, []);
+
+  // ── Keyboard shortcuts ──
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Don't fire when typing in inputs/textareas
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement)?.tagName)) return;
+      if (e.key === 'n' || e.key === 'N') router.push('/proposals/new');
+      if (e.key === 'k' || e.key === 'K') { setViewMode('kanban'); setActiveTab('proposals'); }
+      if (e.key === 't' || e.key === 'T') { setViewMode('table'); setActiveTab('proposals'); }
+      if (e.key === 'g' || e.key === 'G') setActiveTab('charts');
+      if (e.key === 'Escape') { setShowShortcuts(false); setIsReorderModalOpen(false); }
+      if (e.key === '?' || (e.key === '/' && e.ctrlKey)) setShowShortcuts(v => !v);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [router]);
 
   const fetchDashboardData = async (silent = false) => {
     if (!silent) {
@@ -281,10 +308,36 @@ export default function Dashboard() {
         .eq('id', id);
 
       if (error) throw error;
+      toast('Proposta excluída com sucesso.', 'success');
       fetchDashboardData(true);
     } catch (err) {
       console.error('Erro ao excluir proposta:', err);
-      alert('Erro ao excluir proposta');
+      toast('Erro ao excluir proposta.', 'error');
+    }
+  };
+
+  // ── Generate public link for a proposal ──
+  const handleShareProposal = async (proposal: any) => {
+    setSharingId(proposal.id);
+    try {
+      // Generate token if not set yet
+      const token = proposal.public_token || crypto.randomUUID();
+      const { error } = await supabase
+        .from('proposals')
+        .update({ public_token: token, is_public: true })
+        .eq('id', proposal.id);
+      if (error) throw error;
+
+      const url = `${window.location.origin}/p/${token}`;
+      await navigator.clipboard.writeText(url);
+      toast('Link copiado! Compartilhe com o cliente. 🔗', 'success');
+      // Refresh to show updated state
+      fetchDashboardData(true);
+    } catch (err) {
+      console.error(err);
+      toast('Erro ao gerar link público.', 'error');
+    } finally {
+      setSharingId(null);
     }
   };
 
@@ -998,6 +1051,43 @@ export default function Dashboard() {
 
   return (
     <div className="flex min-h-screen bg-background text-foreground transition-colors duration-300">
+      {/* ── ONBOARDING TOUR BEETHOVEN ── remove <OnboardingTour /> below to disable */}
+      <OnboardingTour />
+
+      {/* ── Keyboard Shortcuts Modal ── */}
+      <AnimatePresence>
+        {showShortcuts && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/40 z-[998]"
+              onClick={() => setShowShortcuts(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[999] w-80 bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-gray-100 dark:border-slate-800 p-6"
+            >
+              <div className="flex items-center gap-2 mb-4">
+                <Keyboard size={18} className="text-primary dark:text-accent" />
+                <h3 className="font-black text-gray-900 dark:text-white">Atalhos de Teclado</h3>
+              </div>
+              <div className="space-y-2">
+                {[['N', 'Nova Proposta'], ['K', 'Modo Kanban'], ['T', 'Modo Tabela'], ['G', 'Ver Gráficos'], ['?', 'Este painel'], ['Esc', 'Fechar']].map(([key, label]) => (
+                  <div key={key} className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600 dark:text-slate-400">{label}</span>
+                    <kbd className="px-2 py-0.5 bg-gray-100 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md text-xs font-mono font-bold text-gray-700 dark:text-slate-300">{key}</kbd>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
       {/* Hidden renderer for PDF capturing (ALWAYS light/white background as user wants) */}
       <div style={{ position: 'absolute', left: '-9999px', top: '-9999px' }}>
         {currentProposal && (
@@ -1020,9 +1110,20 @@ export default function Dashboard() {
             <NavItem icon={LayoutDashboard} label={t('dashboard')} href="/" active />
             <NavItem icon={FileText} label={t('proposals')} href="#" />
             <NavItem icon={Users} label={t('clients')} href="#" />
-            <NavItem icon={Cpu} label={t('chargers')} href="/models" />
-            <NavItem icon={Sliders} label={t('templates')} href="/templates" />
-            <NavItem icon={Settings} label={t('settings')} href="/settings" />
+            {profile?.role === 'admin' && (
+              <>
+                <NavItem icon={Cpu} label={t('chargers')} href="/models" />
+                <NavItem icon={Sliders} label={t('templates')} href="/templates" />
+              </>
+            )}
+            <a
+              data-tour="settings-link"
+              href="/settings"
+              className="flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all text-[var(--sidebar-nav-text)] hover:bg-[var(--sidebar-nav-hover-bg)] hover:text-[var(--sidebar-nav-hover-text)]"
+            >
+              <Settings size={20} />
+              <span>{t('settings')}</span>
+            </a>
           </nav>
         </div>
 
@@ -1036,6 +1137,26 @@ export default function Dashboard() {
               <p className="text-xs text-[var(--sidebar-nav-text)] truncate">Plano Pro</p>
             </div>
           </div>
+          {/* TOUR BUTTON — remove junto com OnboardingTour.tsx para desativar */}
+          <button
+            data-tour="tour-btn"
+            onClick={restartOnboarding}
+            className="flex items-center gap-3 w-full px-2 py-2 text-[var(--sidebar-nav-text)] hover:text-accent transition-colors cursor-pointer mb-1"
+            title="Ver tour guiado"
+          >
+            <GraduationCap size={20} />
+            <span className="font-medium">Ver Tour</span>
+          </button>
+
+          <button
+            onClick={() => setShowShortcuts(v => !v)}
+            className="flex items-center gap-3 w-full px-2 py-2 text-[var(--sidebar-nav-text)] hover:text-[var(--sidebar-nav-hover-text)] transition-colors cursor-pointer mb-3"
+            title="Atalhos de teclado"
+          >
+            <Keyboard size={20} />
+            <span className="font-medium">Atalhos</span>
+          </button>
+
           <button 
             onClick={handleLogout}
             className="flex items-center gap-3 w-full px-2 py-2 text-[var(--sidebar-nav-text)] hover:text-red-500 dark:hover:text-red-400 transition-colors cursor-pointer"
@@ -1064,6 +1185,7 @@ export default function Dashboard() {
               />
             </div>
             <button 
+              data-tour="new-proposal"
               onClick={() => router.push('/proposals/new')}
               className="bg-primary text-white px-4 py-2 rounded-full font-bold flex items-center gap-2 hover:opacity-90 transition-all shadow-sm active:scale-95 text-sm cursor-pointer"
             >
@@ -1076,8 +1198,9 @@ export default function Dashboard() {
         {/* Evolved Scrollable Content Area */}
         <div className="p-8 space-y-8 max-w-7xl mx-auto w-full">
         {/* Tab Navigation */}
-        <div className="flex gap-4 mb-6">
+        <div data-tour="tab-nav" className="flex gap-4 mb-6">
           <button
+            data-tour="tab-charts"
             onClick={() => setActiveTab('charts')}
             className={`px-4 py-2 rounded ${activeTab === 'charts' ? 'bg-primary text-white' : 'bg-gray-200 dark:bg-slate-800 text-gray-800 dark:text-gray-200'}`}
           >
@@ -1090,6 +1213,7 @@ export default function Dashboard() {
             Insights & Rankings
           </button>
           <button
+            data-tour="tab-proposals"
             onClick={() => setActiveTab('proposals')}
             className={`px-4 py-2 rounded ${activeTab === 'proposals' ? 'bg-primary text-white' : 'bg-gray-200 dark:bg-slate-800 text-gray-800 dark:text-gray-200'}`}
           >
@@ -1100,7 +1224,7 @@ export default function Dashboard() {
           {/* Section 1: Executive KPIs (Cards Inteligentes) */}
           {activeTab === 'charts' && (
           <>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
+          <div data-tour="kpis" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
             <KPICard 
               title={t('totalProposals')}
               value={stats.kpis.totalProposals.value}
@@ -1142,7 +1266,7 @@ export default function Dashboard() {
           </div>
 
           {/* Section 2: Recharts Analytics Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div data-tour="charts" className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             
             {/* Chart 1: Evolution of Proposals AreaChart */}
             <motion.div 
@@ -1417,7 +1541,7 @@ export default function Dashboard() {
             <div className="lg:col-span-2 space-y-4">
               
               {/* Tabela Card */}
-              <div className={`bg-white dark:bg-slate-900 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm transition-colors duration-300 ${
+              <div data-tour="manager-card" className={`bg-white dark:bg-slate-900 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm transition-colors duration-300 ${
                 viewMode === 'kanban' ? 'overflow-visible' : 'overflow-hidden'
               }`}>
                 
@@ -1428,8 +1552,9 @@ export default function Dashboard() {
                       <h2 className="text-lg font-bold text-gray-900 dark:text-white">Gerenciador de Propostas</h2>
                       
                       {/* View Toggle */}
-                      <div className="flex bg-gray-100 dark:bg-slate-800 p-0.5 rounded-lg text-[10px] font-bold text-gray-500 transition-colors">
+                      <div data-tour="view-toggle" className="flex bg-gray-100 dark:bg-slate-800 p-0.5 rounded-lg text-[10px] font-bold text-gray-500 transition-colors">
                         <button
+                          data-tour="toggle-table"
                           type="button"
                           onClick={() => setViewMode('table')}
                           className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
@@ -1441,6 +1566,7 @@ export default function Dashboard() {
                           Tabela
                         </button>
                         <button
+                          data-tour="toggle-kanban"
                           type="button"
                           onClick={() => setViewMode('kanban')}
                           className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
@@ -1627,6 +1753,24 @@ export default function Dashboard() {
                                 </td>
                                 <td className="px-6 py-4 text-right">
                                   <div className="flex items-center justify-end gap-2 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                                    {/* Signed badge */}
+                                    {prop.client_signed_at && (
+                                      <span className="flex items-center gap-1 px-2 py-0.5 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/40 rounded-full text-[10px] font-black">
+                                        <PenLine size={10} />
+                                        Assinado
+                                      </span>
+                                    )}
+                                    {/* Share / Public link button */}
+                                    {!prop.id?.toString().startsWith('mock-') && (
+                                      <button
+                                        onClick={() => handleShareProposal(prop)}
+                                        disabled={sharingId === prop.id}
+                                        title="Gerar link público para o cliente"
+                                        className="p-2 text-gray-400 hover:text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-950/20 rounded-lg transition-all disabled:opacity-30 cursor-pointer"
+                                      >
+                                        {sharingId === prop.id ? <Loader2 className="animate-spin" size={16} /> : <Link2 size={16} />}
+                                      </button>
+                                    )}
                                     <button 
                                       onClick={() => handleView(prop)}
                                       disabled={viewingId === prop.id || downloadingId === prop.id}
@@ -1762,8 +1906,29 @@ export default function Dashboard() {
                   </>
                 ) : (
                   (() => {
-                    const sortedKanbanProposals = sortProposalsByKanbanOrder(filteredProposals);
+                    const kanbanFiltered = kanbanSearch.trim()
+                      ? filteredProposals.filter(p =>
+                          (p.client?.name || p.commercial_data?.client?.name || '').toLowerCase().includes(kanbanSearch.toLowerCase()) ||
+                          (p.title || '').toLowerCase().includes(kanbanSearch.toLowerCase())
+                        )
+                      : filteredProposals;
+                    const sortedKanbanProposals = sortProposalsByKanbanOrder(kanbanFiltered);
+                    const getDaysInColumn = (p: any) => Math.floor((Date.now() - new Date(p.created_at).getTime()) / 86400000);
                     return (
+                      <div>
+                      {/* Kanban search bar */}
+                      <div className="px-6 pt-4 pb-2">
+                        <div className="relative max-w-xs">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
+                          <input
+                            type="text"
+                            placeholder="Buscar no Kanban..."
+                            value={kanbanSearch}
+                            onChange={e => setKanbanSearch(e.target.value)}
+                            className="pl-9 pr-4 py-2 w-full border border-gray-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900 text-sm text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/10 transition-all"
+                          />
+                        </div>
+                      </div>
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-6 bg-gray-50/20 dark:bg-slate-950/10 transition-colors">
                         
                         {/* Column 1: Em Andamento */}
@@ -1834,6 +1999,20 @@ export default function Dashboard() {
                                           <h4 className="text-xs font-bold text-gray-900 dark:text-white mt-0.5 truncate">{prop.title}</h4>
                                         </div>
                                       </div>
+
+                                      {/* Days-in-column badge */}
+                                      {(() => {
+                                        const days = getDaysInColumn(prop);
+                                        const color = days <= 3 ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400'
+                                          : days <= 7 ? 'bg-yellow-50 text-yellow-600 dark:bg-yellow-950/20 dark:text-yellow-400'
+                                          : 'bg-red-50 text-red-600 dark:bg-red-950/20 dark:text-red-400';
+                                        return (
+                                          <span className={`inline-flex items-center gap-1 text-[9px] font-black px-2 py-0.5 rounded-full ${color}`}>
+                                            <Clock size={8} />
+                                            {days === 0 ? 'Hoje' : `${days}d nesta coluna`}
+                                          </span>
+                                        );
+                                      })()}
 
                                       <div className="flex justify-between items-end border-t border-gray-100 dark:border-slate-800/30 pt-2.5">
                                         <div>
@@ -1925,6 +2104,20 @@ export default function Dashboard() {
                                         </div>
                                       </div>
 
+                                      {/* Days-in-column badge */}
+                                      {(() => {
+                                        const days = getDaysInColumn(prop);
+                                        const color = days <= 3 ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400'
+                                          : days <= 7 ? 'bg-yellow-50 text-yellow-600 dark:bg-yellow-950/20 dark:text-yellow-400'
+                                          : 'bg-red-50 text-red-600 dark:bg-red-950/20 dark:text-red-400';
+                                        return (
+                                          <span className={`inline-flex items-center gap-1 text-[9px] font-black px-2 py-0.5 rounded-full ${color}`}>
+                                            <Clock size={8} />
+                                            {days === 0 ? 'Hoje' : `${days}d nesta coluna`}
+                                          </span>
+                                        );
+                                      })()}
+
                                       <div className="flex justify-between items-end border-t border-gray-100 dark:border-slate-800/30 pt-2.5">
                                         <div>
                                           <p className="text-[8px] font-bold text-gray-400 dark:text-slate-500 uppercase">Valor</p>
@@ -2015,6 +2208,20 @@ export default function Dashboard() {
                                         </div>
                                       </div>
 
+                                      {/* Days-in-column badge */}
+                                      {(() => {
+                                        const days = getDaysInColumn(prop);
+                                        const color = days <= 3 ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400'
+                                          : days <= 7 ? 'bg-yellow-50 text-yellow-600 dark:bg-yellow-950/20 dark:text-yellow-400'
+                                          : 'bg-red-50 text-red-600 dark:bg-red-950/20 dark:text-red-400';
+                                        return (
+                                          <span className={`inline-flex items-center gap-1 text-[9px] font-black px-2 py-0.5 rounded-full ${color}`}>
+                                            <Clock size={8} />
+                                            {days === 0 ? 'Hoje' : `${days}d nesta coluna`}
+                                          </span>
+                                        );
+                                      })()}
+
                                       <div className="flex justify-between items-end border-t border-gray-100 dark:border-slate-800/30 pt-2.5">
                                         <div>
                                           <p className="text-[8px] font-bold text-gray-400 dark:text-slate-500 uppercase">Valor</p>
@@ -2036,6 +2243,7 @@ export default function Dashboard() {
                           </div>
                         </div>
 
+                      </div>
                       </div>
                     );
                   })()
