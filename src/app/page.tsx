@@ -46,6 +46,7 @@ import { useApp } from '@/context/AppContext';
 import { getDashboardStats, DashboardProposal } from '@/lib/dashboard-data';
 import { useToast } from '@/components/Toast';
 import { OnboardingTour, useOnboarding } from '@/components/OnboardingTour';
+import AppSidebar from '@/components/AppSidebar';
 import {
   AreaChart,
   Area,
@@ -195,8 +196,12 @@ export default function Dashboard() {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    if (typeof window !== 'undefined') {
-      sessionStorage.removeItem('dashboardStats');
+    try {
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('dashboardStats');
+      }
+    } catch (e) {
+      console.warn('sessionStorage is not accessible on logout:', e);
     }
     router.push('/login');
   };
@@ -208,10 +213,23 @@ export default function Dashboard() {
     
     setTimeout(async () => {
       try {
-        if (!proposal.template?.file_url) {
+        let templateUrl = proposal.template?.file_url;
+        
+        // Fallback: If no template is linked to the proposal, fetch the default one from the database
+        if (!templateUrl) {
+          const { data: dbTemplates } = await supabase
+            .from('templates')
+            .select('file_url, is_default');
+          if (dbTemplates && dbTemplates.length > 0) {
+            const chosen = dbTemplates.find(t => t.is_default) || dbTemplates[0];
+            templateUrl = chosen.file_url;
+          }
+        }
+
+        if (!templateUrl) {
           await PDFService.viewOnlyPage6('proposal-page-6');
         } else {
-          const pageCount = await PDFService.getTemplatePageCount(proposal.template.file_url);
+          const pageCount = await PDFService.getTemplatePageCount(templateUrl);
           const pageOrder: Array<{ type: 'template' | 'saas-cover' | 'saas-page6'; index?: number }> = [];
           
           pageOrder.push({ type: 'saas-cover' as const });
@@ -225,9 +243,9 @@ export default function Dashboard() {
           for (let i = 6; i < pageCount; i++) {
             pageOrder.push({ type: 'template' as const, index: i });
           }
-
+          
           await PDFService.viewCustomOrderedPdf(
-            proposal.template.file_url,
+            templateUrl,
             'proposal-cover',
             'proposal-page-6',
             pageOrder
@@ -389,7 +407,7 @@ export default function Dashboard() {
     // 1. Optimistic Update for Real Proposals
     const updatedProposals = proposals.map(p => {
       if (p.id === id) {
-        return { ...p, status: newStatus };
+        return { ...p, status: newStatus, updated_at: new Date().toISOString() };
       }
       return p;
     });
@@ -407,7 +425,10 @@ export default function Dashboard() {
     try {
       const { error } = await supabase
         .from('proposals')
-        .update({ status: newStatus })
+        .update({ 
+          status: newStatus,
+          updated_at: new Date().toISOString()
+        })
         .eq('id', id);
 
       if (error) throw error;
@@ -593,33 +614,53 @@ export default function Dashboard() {
   };
 
   const handleDownload = async (proposal: any) => {
-    if (!proposal.template?.file_url) {
-      setDownloadingId(proposal.id);
-      setCurrentProposal(proposal.commercial_data);
-      setTimeout(async () => {
-        try {
-          await PDFService.downloadTestProposal(
-            'proposal-cover',
-            'proposal-page-6',
-            `Proposta_TESTE_Completa_${proposal.client?.name || proposal.id}`
-          );
-        } catch (err) {
-          console.error(err);
-          alert('Erro ao gerar PDF');
-        } finally {
-          setDownloadingId(null);
-        }
-      }, 500);
-      return;
-    }
-
-    setSelectedProposal(proposal);
+    setDownloadingId(proposal.id);
     setCurrentProposal(proposal.commercial_data);
-    setLoadingPages(true);
-    setIsReorderModalOpen(true);
 
     try {
-      const pageCount = await PDFService.getTemplatePageCount(proposal.template.file_url);
+      let templateUrl = proposal.template?.file_url;
+      
+      // Fallback: If no template is linked to the proposal, fetch the default one from the database
+      if (!templateUrl) {
+        const { data: dbTemplates } = await supabase
+          .from('templates')
+          .select('file_url, is_default');
+        if (dbTemplates && dbTemplates.length > 0) {
+          const chosen = dbTemplates.find(t => t.is_default) || dbTemplates[0];
+          templateUrl = chosen.file_url;
+        }
+      }
+
+      if (!templateUrl) {
+        // Standalone cover + page 6 download fallback if no templates exist in DB
+        setTimeout(async () => {
+          try {
+            await PDFService.downloadTestProposal(
+              'proposal-cover',
+              'proposal-page-6',
+              `Proposta_TESTE_Completa_${proposal.client?.name || proposal.id}`
+            );
+          } catch (err) {
+            console.error(err);
+            alert('Erro ao gerar PDF');
+          } finally {
+            setDownloadingId(null);
+          }
+        }, 500);
+        return;
+      }
+
+      // Prepare proposal copy with resolved template for the reorder modal
+      const proposalWithTemplate = {
+        ...proposal,
+        template: { file_url: templateUrl }
+      };
+
+      setSelectedProposal(proposalWithTemplate);
+      setLoadingPages(true);
+      setIsReorderModalOpen(true);
+
+      const pageCount = await PDFService.getTemplatePageCount(templateUrl);
       const initialPages: ReorderPage[] = [];
       
       initialPages.push({
@@ -661,6 +702,7 @@ export default function Dashboard() {
       setIsReorderModalOpen(false);
     } finally {
       setLoadingPages(false);
+      setDownloadingId(null);
     }
   };
 
@@ -1098,74 +1140,7 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Sidebar (UNTOUCHED structure, updated styling variables) */}
-      <aside className="w-64 bg-[var(--sidebar-bg)] border-r border-[var(--sidebar-border)] flex flex-col fixed h-full z-20 transition-colors duration-300">
-        <div className="p-6">
-          <div className="flex items-center gap-2 mb-8">
-            <img src="/ecocarga-logo-small.png" alt="EcoCarga" className="w-8 h-8 object-contain" />
-            <span className="text-lg font-bold tracking-tight text-[var(--sidebar-text-active)]">Kepler's Proposal</span>
-          </div>
-
-          <nav className="space-y-1">
-            <NavItem icon={LayoutDashboard} label={t('dashboard')} href="/" active />
-            <NavItem icon={FileText} label={t('proposals')} href="#" />
-            <NavItem icon={Users} label={t('clients')} href="#" />
-            {profile?.role === 'admin' && (
-              <>
-                <NavItem icon={Cpu} label={t('chargers')} href="/models" />
-                <NavItem icon={Sliders} label={t('templates')} href="/templates" />
-              </>
-            )}
-            <a
-              data-tour="settings-link"
-              href="/settings"
-              className="flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all text-[var(--sidebar-nav-text)] hover:bg-[var(--sidebar-nav-hover-bg)] hover:text-[var(--sidebar-nav-hover-text)]"
-            >
-              <Settings size={20} />
-              <span>{t('settings')}</span>
-            </a>
-          </nav>
-        </div>
-
-        <div className="mt-auto p-6 border-t border-[var(--sidebar-border)]">
-          <div className="flex items-center gap-3 mb-6 px-2">
-            <div className="w-8 h-8 rounded-full bg-[var(--sidebar-nav-hover-bg)] flex items-center justify-center text-xs font-bold text-[var(--sidebar-nav-text)]">
-              {profile?.full_name?.substring(0, 2).toUpperCase() || 'US'}
-            </div>
-            <div className="overflow-hidden">
-              <p className="text-sm font-bold text-[var(--sidebar-text-active)] truncate">{profile?.full_name}</p>
-              <p className="text-xs text-[var(--sidebar-nav-text)] truncate">Plano Pro</p>
-            </div>
-          </div>
-          {/* TOUR BUTTON — remove junto com OnboardingTour.tsx para desativar */}
-          <button
-            data-tour="tour-btn"
-            onClick={restartOnboarding}
-            className="flex items-center gap-3 w-full px-2 py-2 text-[var(--sidebar-nav-text)] hover:text-accent transition-colors cursor-pointer mb-1"
-            title="Ver tour guiado"
-          >
-            <GraduationCap size={20} />
-            <span className="font-medium">Ver Tour</span>
-          </button>
-
-          <button
-            onClick={() => setShowShortcuts(v => !v)}
-            className="flex items-center gap-3 w-full px-2 py-2 text-[var(--sidebar-nav-text)] hover:text-[var(--sidebar-nav-hover-text)] transition-colors cursor-pointer mb-3"
-            title="Atalhos de teclado"
-          >
-            <Keyboard size={20} />
-            <span className="font-medium">Atalhos</span>
-          </button>
-
-          <button 
-            onClick={handleLogout}
-            className="flex items-center gap-3 w-full px-2 py-2 text-[var(--sidebar-nav-text)] hover:text-red-500 dark:hover:text-red-400 transition-colors cursor-pointer"
-          >
-            <LogOut size={20} />
-            <span className="font-medium">{t('logout')}</span>
-          </button>
-        </div>
-      </aside>
+      <AppSidebar onRestartTour={restartOnboarding} onShowShortcuts={() => setShowShortcuts(v => !v)} />
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col ml-64 min-h-screen">
@@ -1913,7 +1888,10 @@ export default function Dashboard() {
                         )
                       : filteredProposals;
                     const sortedKanbanProposals = sortProposalsByKanbanOrder(kanbanFiltered);
-                    const getDaysInColumn = (p: any) => Math.floor((Date.now() - new Date(p.created_at).getTime()) / 86400000);
+                    const getDaysInColumn = (p: any) => {
+                      const date = p.updated_at || p.created_at;
+                      return Math.floor((Date.now() - new Date(date).getTime()) / 86400000);
+                    };
                     return (
                       <div>
                       {/* Kanban search bar */}

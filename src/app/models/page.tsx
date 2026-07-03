@@ -21,6 +21,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
+import AppSidebar from '@/components/AppSidebar';
 
 export default function ModelsPage() {
   const { profile, t } = useApp();
@@ -219,45 +220,7 @@ export default function ModelsPage() {
 
   return (
     <div className="flex min-h-screen bg-gray-50/50 dark:bg-slate-950 transition-colors duration-300">
-      {/* Sidebar */}
-      <aside className="w-64 bg-white dark:bg-slate-900 border-r border-gray-200 dark:border-slate-800 flex flex-col fixed h-full z-20 transition-colors duration-300">
-        <div className="p-6">
-          <div className="flex items-center gap-2 mb-8">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-xl">P</span>
-            </div>
-            <span className="text-xl font-bold tracking-tight text-gray-900 dark:text-white">ProposalPro</span>
-          </div>
-
-          <nav className="space-y-1">
-            <NavItem icon={LayoutDashboard} label={t('dashboard')} href="/" />
-            <NavItem icon={FileText} label={t('proposals')} href="#" />
-            <NavItem icon={Users} label={t('clients')} href="#" />
-            <NavItem icon={Cpu} label={t('chargers')} active href="/models" />
-            <NavItem icon={Sliders} label={t('templates')} href="/templates" />
-            <NavItem icon={Settings} label={t('settings')} href="/settings" />
-          </nav>
-        </div>
-
-        <div className="mt-auto p-6 border-t border-gray-200 dark:border-slate-800">
-          <div className="flex items-center gap-3 mb-6 px-2">
-            <div className="w-8 h-8 rounded-full bg-gray-100 dark:bg-slate-850 flex items-center justify-center text-xs font-bold text-gray-500 dark:text-gray-400">
-              {profile?.full_name?.substring(0, 2).toUpperCase() || 'US'}
-            </div>
-            <div className="overflow-hidden">
-              <p className="text-sm font-bold text-gray-900 dark:text-white truncate">{profile?.full_name}</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">Plano Pro</p>
-            </div>
-          </div>
-          <button 
-            onClick={handleLogout}
-            className="flex items-center gap-3 w-full px-2 py-2 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 transition-colors"
-          >
-            <LogOut size={20} />
-            <span className="font-medium">{t('logout')}</span>
-          </button>
-        </div>
-      </aside>
+      <AppSidebar />
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col ml-64 min-h-screen">

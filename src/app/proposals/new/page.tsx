@@ -15,7 +15,7 @@ import {
   ChevronRight,
   AlertCircle,
 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { ProposalPage6 } from '@/components/ProposalPage6';
 import { ProposalCover } from '@/components/ProposalCover';
@@ -140,9 +140,10 @@ const inputCls = (hasError?: boolean) =>
 
 // ─── Página principal ──────────────────────────────────────────────────────────
 
-export default function NewProposalPage() {
+function NewProposalPage() {
   const { profile, t } = useApp();
   const toast = useToast();
+  const searchParams = useSearchParams();
   const router = useRouter();
 
   const [currentStep, setCurrentStep] = useState(0);
@@ -152,6 +153,9 @@ export default function NewProposalPage() {
   const [chargerModels, setChargerModels] = useState<any[]>([]);
   const [previewTab, setPreviewTab] = useState<'cover' | 'page6'>('cover');
   const [errors, setErrors] = useState<FormErrors>({});
+
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [isLeadSelected, setIsLeadSelected] = useState(false);
 
   // Estado de exibição do preço como string formatada (ex: "30.966,36")
   const [priceDisplay, setPriceDisplay] = useState('');
@@ -167,6 +171,29 @@ export default function NewProposalPage() {
 
   useEffect(() => { fetchData(); }, []);
 
+  useEffect(() => {
+    const leadId = searchParams.get('leadId');
+    const name = searchParams.get('name');
+    const phone = searchParams.get('phone');
+    const address = searchParams.get('address');
+
+    if (name || phone || address) {
+      setFormData(prev => ({
+        ...prev,
+        client: {
+          name: name ? decodeURIComponent(name) : prev.client.name,
+          phone: phone ? decodeURIComponent(phone) : prev.client.phone,
+          address: address ? decodeURIComponent(address) : prev.client.address,
+        }
+      }));
+    }
+    
+    if (leadId) {
+      setSelectedClientId(leadId);
+      setIsLeadSelected(true);
+    }
+  }, [searchParams]);
+
   const fetchData = async () => {
     const { data: clientsData }   = await supabase.from('clients').select('*');
     const { data: templatesData } = await supabase.from('templates').select('*');
@@ -174,6 +201,19 @@ export default function NewProposalPage() {
     setClients(clientsData   || []);
     setTemplates(templatesData || []);
     setChargerModels(modelsData || []);
+  };
+
+  const handleSelectClient = (client: any) => {
+    setSelectedClientId(client.id);
+    setIsLeadSelected(client.is_lead);
+    setFormData(prev => ({
+      ...prev,
+      client: {
+        name: client.name || '',
+        phone: client.phone || '',
+        address: client.address || '',
+      }
+    }));
   };
 
   // ── Validação por etapa ──────────────────────────────────────────────────────
@@ -280,20 +320,33 @@ export default function NewProposalPage() {
       if (!user) throw new Error('Usuário não autenticado.');
 
       // 1. Criar ou atualizar cliente
-      let clientId = null;
-      if (formData.client.name) {
-        const { data: client } = await supabase
-          .from('clients')
-          .upsert({
-            user_id: user.id,
-            name:    formData.client.name,
-            phone:   formData.client.phone,
-            address: formData.client.address,
-          })
-          .select()
-          .single();
-        clientId = client?.id;
+      let clientId = selectedClientId;
+      const clientPayload: any = {
+        user_id: user.id,
+        name:    formData.client.name,
+        phone:   formData.client.phone,
+        address: formData.client.address,
+      };
+
+      if (clientId) {
+        clientPayload.id = clientId;
+        if (isLeadSelected) {
+          clientPayload.is_lead = false;
+          clientPayload.lead_status = 'proposal';
+          clientPayload.timeline = [
+            { event: 'Convertido em Cliente (Proposta Criada)', time: todayFormatted(), type: 'system' }
+          ];
+        }
       }
+
+      const { data: client, error: clientErr } = await supabase
+        .from('clients')
+        .upsert(clientPayload)
+        .select()
+        .single();
+
+      if (clientErr) throw clientErr;
+      clientId = client?.id;
 
       // 2. Salvar proposta com data de emissão atual
       const { error: propError } = await supabase
@@ -403,23 +456,75 @@ export default function NewProposalPage() {
               {currentStep === 0 && (
                 <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm space-y-6 transition-colors duration-300">
                   <h2 className="text-xl font-bold text-gray-900 dark:text-white">{t('clientInfo')}</h2>
+
+                  {selectedClientId && (
+                    <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-dashed border-emerald-250 dark:border-emerald-900/30 rounded-xl p-4 flex items-center justify-between transition-all">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        <span className="text-xs font-bold text-emerald-800 dark:text-emerald-400">
+                          Vinculado a {isLeadSelected ? 'um Lead WhatsApp' : 'um Cliente existente'} (cadastro editável abaixo)
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedClientId(null);
+                          setIsLeadSelected(false);
+                        }}
+                        className="text-xs font-black text-red-500 hover:text-red-700 transition-colors uppercase tracking-wider"
+                      >
+                        Desvincular
+                      </button>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
                     <Field label={t('clientBusinessName')} error={errors.clientName} required>
-                      <input
-                        type="text"
-                        value={formData.client.name}
-                        onChange={(e) => {
-                          // Só aceita letras, números e caracteres comuns de nome/empresa
-                          const val = e.target.value;
-                          setFormData(prev => ({ ...prev, client: { ...prev.client, name: val } }));
-                          if (errors.clientName) setErrors(prev => ({ ...prev, clientName: undefined }));
-                        }}
-                        className={inputCls(!!errors.clientName)}
-                        placeholder="Ex: Condomínio Solar"
-                        maxLength={120}
-                        autoComplete="organization"
-                      />
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={formData.client.name}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setFormData(prev => ({ ...prev, client: { ...prev.client, name: val } }));
+                            if (errors.clientName) setErrors(prev => ({ ...prev, clientName: undefined }));
+                            setSelectedClientId(null);
+                            setIsLeadSelected(false);
+                          }}
+                          className={inputCls(!!errors.clientName)}
+                          placeholder="Ex: Condomínio Solar"
+                          maxLength={120}
+                          autoComplete="organization"
+                        />
+                        {/* Dropdown de sugestões */}
+                        {formData.client.name && !selectedClientId && clients.filter(c => c.name.toLowerCase().includes(formData.client.name.toLowerCase())).length > 0 && (
+                          <div className="absolute z-30 left-0 right-0 mt-1 max-h-60 overflow-y-auto bg-white dark:bg-slate-950 border border-gray-200 dark:border-slate-800 rounded-2xl shadow-xl">
+                            {clients
+                              .filter(c => c.name.toLowerCase().includes(formData.client.name.toLowerCase()))
+                              .map(client => (
+                                <button
+                                  key={client.id}
+                                  type="button"
+                                  onClick={() => handleSelectClient(client)}
+                                  className="w-full text-left px-4 py-3 hover:bg-gray-50 dark:hover:bg-slate-900/60 text-sm text-gray-800 dark:text-gray-200 transition-colors flex items-center justify-between border-b border-gray-100 dark:border-slate-800/40 last:border-0"
+                                >
+                                  <div>
+                                    <p className="font-bold text-xs">{client.name}</p>
+                                    <p className="text-[10px] text-gray-400 mt-0.5">{client.phone || 'Sem telefone'}</p>
+                                  </div>
+                                  <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                    client.is_lead 
+                                      ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-100 dark:border-amber-900/30'
+                                      : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/30'
+                                  }`}>
+                                    {client.is_lead ? 'Lead' : 'Cliente'}
+                                  </span>
+                                </button>
+                              ))}
+                          </div>
+                        )}
+                      </div>
                     </Field>
 
                     <Field label={t('clientPhone')} error={errors.clientPhone} required>
@@ -849,5 +954,17 @@ export default function NewProposalPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function NewProposalPageWrapper() {
+  return (
+    <React.Suspense fallback={
+      <div className="flex h-screen w-screen items-center justify-center bg-[var(--background)] text-[var(--foreground)]">
+        <Loader2 className="animate-spin text-[#004D31]" size={32} />
+      </div>
+    }>
+      <NewProposalPage />
+    </React.Suspense>
   );
 }

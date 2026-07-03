@@ -17,6 +17,7 @@ import {
   Maximize2
 } from 'lucide-react';
 
+
 interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -105,7 +106,7 @@ export default function KeplerAssistant() {
     const welcome: ChatMessage = {
       id: 'welcome',
       role: 'assistant',
-      content: 'Olá! Sou o **Kepler\'s Assistant**, o consultor de inteligência comercial da **EcoCarga**. \n\nEstou pronto para ajudar você a analisar seu faturamento, entender o status das propostas, listar seus principais clientes ou esclarecer dúvidas técnicas sobre carregadores rápidos DC e AC. Como posso te ajudar hoje?',
+      content: "Olá! Sou o **Kepler's Assistant**, o consultor de inteligência comercial da **EcoCarga**. \n\nEstou pronto para ajudar você a analisar seu faturamento, entender o status das propostas, listar seus principais clientes ou esclarecer dúvidas técnicas sobre carregadores rápidos DC e AC. Como posso te ajudar hoje?",
       timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
     };
     setMessages([welcome]);

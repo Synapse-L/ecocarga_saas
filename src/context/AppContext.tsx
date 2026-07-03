@@ -370,6 +370,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
 
+
+
   const applyTheme = (t: Theme) => {
     const root = window.document.documentElement;
     root.classList.remove('dark', 'ecocarga');

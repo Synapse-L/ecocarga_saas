@@ -30,6 +30,48 @@ export default function RootLayout({
       lang="pt-BR"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  var x = window.sessionStorage;
+                } catch (e) {
+                  var mockStorage = {
+                    _data: {},
+                    setItem: function(k, v) { this._data[k] = String(v); },
+                    getItem: function(k) { return this._data.hasOwnProperty(k) ? this._data[k] : null; },
+                    removeItem: function(k) { delete this._data[k]; },
+                    clear: function() { this._data = {}; }
+                  };
+                  try {
+                    Object.defineProperty(window, 'sessionStorage', { value: mockStorage, configurable: true, writable: true });
+                  } catch (err) {
+                    window.sessionStorage = mockStorage;
+                  }
+                }
+                try {
+                  var y = window.localStorage;
+                } catch (e) {
+                  var mockStorage = {
+                    _data: {},
+                    setItem: function(k, v) { this._data[k] = String(v); },
+                    getItem: function(k) { return this._data.hasOwnProperty(k) ? this._data[k] : null; },
+                    removeItem: function(k) { delete this._data[k]; },
+                    clear: function() { this._data = {}; }
+                  };
+                  try {
+                    Object.defineProperty(window, 'localStorage', { value: mockStorage, configurable: true, writable: true });
+                  } catch (err) {
+                    window.localStorage = mockStorage;
+                  }
+                }
+              })();
+            `
+          }}
+        />
+      </head>
       <body className="min-h-full flex flex-col">
         <AppProvider>
           <ToastProvider>
