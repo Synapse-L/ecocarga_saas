@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import type { UserProfile } from '@/types/profile';
 
 type Theme = 'light' | 'dark' | 'ecocarga';
 type Language = 'pt' | 'en';
@@ -11,8 +12,8 @@ interface AppContextProps {
   setTheme: (theme: Theme) => void;
   language: Language;
   setLanguage: (lang: Language) => void;
-  profile: any;
-  setProfile: (profile: any) => void;
+  profile: UserProfile | null;
+  setProfile: React.Dispatch<React.SetStateAction<UserProfile | null>>;
   updateNickname: (name: string) => Promise<boolean>;
   t: (key: string) => string;
 }
@@ -283,7 +284,7 @@ const AppContext = createContext<AppContextProps | undefined>(undefined);
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [theme, setThemeState] = useState<Theme>('light');
   const [language, setLanguageState] = useState<Language>('pt');
-  const [profile, setProfile] = useState<any>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
 
   useEffect(() => {
     // 1. Load theme from localStorage
@@ -315,7 +316,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           .maybeSingle();
 
         if (data) {
-          setProfile(data);
+          setProfile(data as UserProfile);
         } else {
           // Fallback e criação automática do perfil se estiver faltando no banco
           const { data: { user } } = await supabase.auth.getUser();
@@ -336,13 +337,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               .single();
 
             if (!insertErr && newProfile) {
-              setProfile(newProfile);
+              setProfile(newProfile as UserProfile);
             } else {
               if (insertErr) {
                 console.error('Erro detalhado do insert do perfil no Supabase:', insertErr);
               }
               // Se der erro de permissão ou outro, usa fallback em memória
-              setProfile({ id: userId, full_name: defaultName, role: 'vendedor', completed_tour: false });
+              setProfile({ id: userId, full_name: defaultName, company_name: 'EcoCarga', role: 'vendedor', completed_tour: false });
             }
           }
         }
@@ -409,7 +410,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       if (error) throw error;
 
-      setProfile((prev: any) => ({ ...prev, id: user.id, full_name: name }));
+      setProfile((prev) => prev ? { ...prev, id: user.id, full_name: name } : null);
       return true;
     } catch (err) {
       console.error('Error updating nickname in AppContext:', err);

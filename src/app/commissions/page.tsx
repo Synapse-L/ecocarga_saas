@@ -10,8 +10,9 @@ import {
   User, RefreshCw, AlertCircle, Sparkles, ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import AppSidebar from '@/components/AppSidebar';
+import { useCommissions } from '@/hooks/useCommissions';
 import { useApp } from '@/context/AppContext';
+import AppSidebar from '@/components/AppSidebar';
 
 // --- Types ---
 type ActiveTab = 'vendedor' | 'gestor';
@@ -60,7 +61,46 @@ const PRODUCT_CATEGORIES = [
 
 export default function CommissionsPage() {
   const { t } = useApp();
-  const [activeTab, setActiveTab] = useState<ActiveTab>('vendedor');
+    const [activeTab, setActiveTab] = useState<ActiveTab>('vendedor');
+
+  const { 
+    commissions: dbCommissions, 
+    totalEarned, 
+    totalPending, 
+    totalRetained 
+  } = useCommissions();
+
+  // Dynamic deals mapping with fallback to mock data
+  const deals: CommissionDeal[] = dbCommissions.length > 0 
+    ? dbCommissions.map(c => ({
+        id: c.id,
+        client: c.client,
+        product: c.product,
+        dealValue: Number(c.deal_value),
+        commPercent: Number(c.comm_percent),
+        commValue: Number(c.comm_value),
+        date: c.created_at ? new Date(c.created_at).toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR'),
+        status: c.status as any
+      }))
+    : MOCK_DEALS;
+
+  // Consolidated statistics
+  const totalVolumeGeral = dbCommissions.length > 0
+    ? dbCommissions.reduce((sum, c) => sum + Number(c.deal_value), 0)
+    : 432000;
+
+  const totalComissoesDevidas = dbCommissions.length > 0
+    ? (totalEarned + totalPending + totalRetained)
+    : 21600;
+
+  const comissaoAcumulada = dbCommissions.length > 0 ? (totalEarned + totalPending) : 9250;
+  const comissaoLiberada = dbCommissions.length > 0 ? totalEarned : 7500;
+
+  const totalVolumeRealizado = dbCommissions.length > 0
+    ? dbCommissions.filter(c => c.status === 'pago' || c.status === 'processando').reduce((sum, c) => sum + Number(c.deal_value), 0)
+    : 185000;
+
+  const percentageMet = Math.round((totalVolumeRealizado / 150000) * 100);
   
   // Vendedor State (Calculator)
   const [selectedProduct, setSelectedProduct] = useState(PRODUCT_CATEGORIES[1].id);
@@ -168,7 +208,7 @@ export default function CommissionsPage() {
                       <p className="text-xs text-gray-400 dark:text-gray-500 font-bold uppercase tracking-wider">Meta Mensal</p>
                       <h3 className="text-2xl font-black text-gray-900 dark:text-white">R$ 150.000</h3>
                       <div className="text-xs text-gray-400 font-medium">
-                        Realizado: <span className="font-bold text-gray-900 dark:text-white">R$ 185.000</span>
+                        Realizado: <span className="font-bold text-gray-900 dark:text-white">R$ {totalVolumeRealizado.toLocaleString('pt-BR')}</span>
                       </div>
                     </div>
                     
@@ -184,7 +224,7 @@ export default function CommissionsPage() {
                         />
                         <path
                           className="text-emerald-500"
-                          strokeDasharray="100, 100" // Explode target (exceeded 100%)
+                          strokeDasharray={`${Math.min(100, percentageMet)}, 100`}
                           strokeWidth="3.5"
                           strokeLinecap="round"
                           stroke="currentColor"
@@ -193,7 +233,7 @@ export default function CommissionsPage() {
                         />
                       </svg>
                       <div className="absolute text-center flex flex-col">
-                        <span className="text-sm font-black text-gray-900 dark:text-white leading-none">123%</span>
+                        <span className="text-sm font-black text-gray-900 dark:text-white leading-none">{percentageMet}%</span>
                         <span className="text-[8px] text-gray-400 font-bold uppercase mt-0.5">Atingido</span>
                       </div>
                     </div>
@@ -202,10 +242,10 @@ export default function CommissionsPage() {
                   {/* Commission Earned Card */}
                   <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-2">
                     <p className="text-xs text-gray-400 dark:text-gray-500 font-bold uppercase tracking-wider">Comissão Acumulada</p>
-                    <h3 className="text-2xl font-black text-[#004D31] dark:text-[#B2D235]">R$ 9.250,00</h3>
+                    <h3 className="text-2xl font-black text-[#004D31] dark:text-[#B2D235]">R$ {comissaoAcumulada.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
                     <p className="text-xs text-gray-400 font-medium flex items-center gap-1">
                       <CheckCircle2 size={13} className="text-emerald-500" />
-                      R$ 7.500,00 já liberados para saque
+                      R$ {comissaoLiberada.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} já liberados para saque
                     </p>
                   </div>
 
@@ -232,7 +272,7 @@ export default function CommissionsPage() {
                     </div>
 
                     <div className="space-y-3">
-                      {MOCK_DEALS.map(deal => (
+                      {deals.map(deal => (
                         <div 
                           key={deal.id}
                           className="p-4 rounded-2xl border border-gray-55 dark:border-slate-850 bg-gray-50/20 dark:bg-slate-900/10 flex items-center justify-between gap-4"
@@ -371,14 +411,14 @@ export default function CommissionsPage() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-2">
                     <p className="text-xs text-gray-400 dark:text-gray-500 font-bold uppercase tracking-wider">Volume Geral de Vendas</p>
-                    <h3 className="text-2xl font-black text-gray-900 dark:text-white">R$ 432.000,00</h3>
-                    <p className="text-xs text-gray-400 font-medium">Faturamento da equipe consolidado em junho</p>
+                    <h3 className="text-2xl font-black text-gray-900 dark:text-white">R$ {totalVolumeGeral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
+                    <p className="text-xs text-gray-400 font-medium">Faturamento da equipe consolidado</p>
                   </div>
 
                   <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-3xl p-6 shadow-sm space-y-2">
                     <p className="text-xs text-gray-400 dark:text-gray-500 font-bold uppercase tracking-wider">Total Comissões Devidas</p>
-                    <h3 className="text-2xl font-black text-[#004D31] dark:text-[#B2D235]">R$ 21.600,00</h3>
-                    <p className="text-xs text-gray-400 font-medium">Equivale a 5% da receita média geral</p>
+                    <h3 className="text-2xl font-black text-[#004D31] dark:text-[#B2D235]">R$ {totalComissoesDevidas.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
+                    <p className="text-xs text-gray-400 font-medium">Comissões processando, pagas ou retidas</p>
                   </div>
 
                   {/* Actions Box */}

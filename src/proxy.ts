@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 // ============================================================
-// MIDDLEWARE DE SEGURANÇA E RATE LIMITING (ANTI-DDOS)
+// PROXY DE SEGURANÇA E RATE LIMITING (ANTI-DDOS)
+// Migrado de middleware.ts para proxy.ts (Next.js 16+)
 // ============================================================
 
 // Mapa em memória para armazenar o histórico de requisições de cada IP
@@ -10,10 +11,10 @@ import type { NextRequest } from 'next/server';
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
 
 // Configurações do Limite
-const LIMIT = 60;          // Máximo de 60 requisições
+const LIMIT = 60;            // Máximo de 60 requisições
 const WINDOW_MS = 60 * 1000; // Janela de tempo de 1 minuto (60.000 ms)
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   // Aplicar proteção apenas em rotas de API (/api/*) para poupar processamento
   if (req.nextUrl.pathname.startsWith('/api')) {
     // Captura o IP do cliente de cabeçalhos de proxy (como Vercel/Cloudflare) ou IP direto da conexão
@@ -58,7 +59,7 @@ export function middleware(req: NextRequest) {
   return NextResponse.next();
 }
 
-// Configura o middleware para rodar apenas nas rotas de API
+// Configura o proxy para rodar apenas nas rotas de API
 export const config = {
   matcher: '/api/:path*',
 };

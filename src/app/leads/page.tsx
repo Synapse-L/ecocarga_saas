@@ -1,5 +1,4 @@
 // 🧹 REMOVABLE MODULE — delete the /leads folder to remove this feature entirely
-// This page uses mock data only and does not connect to any database
 
 "use client";
 
@@ -15,6 +14,7 @@ import { useApp } from '@/context/AppContext';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import AppSidebar from '@/components/AppSidebar';
+import { useLeads } from '@/hooks/useLeads';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 type LeadStatus = 'new' | 'inprogress' | 'qualified' | 'proposal' | 'closed';
@@ -456,8 +456,10 @@ export default function LeadsPage() {
   const { profile, t } = useApp();
   const router = useRouter();
 
+  // Use real Supabase hook — falls back to MOCK_LEADS if table is empty
+  const { leads: dbLeads, loading, updateLead } = useLeads();
+
   const [leads, setLeads] = useState<Lead[]>([]);
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<LeadStatus | 'all'>('all');
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
@@ -469,57 +471,21 @@ export default function LeadsPage() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const fetchLeads = useCallback(async () => {
-    setLoading(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data, error } = await supabase
-        .from('clients')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('is_lead', true)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      if (!data || data.length === 0) {
-        // Seeding database with initial leads
-        const seededLeads = MOCK_LEADS.map(lead => ({
-          user_id: user.id,
-          name: lead.name,
-          phone: lead.phone,
-          address: lead.interest,
-          is_lead: true,
-          lead_status: lead.status,
-          lead_score: lead.score,
-          lead_origin: lead.origin,
-          first_msg: lead.firstMsg,
-          tags: lead.tags,
-          timeline: lead.timeline || []
-        }));
-
-        const { data: inserted, error: insertError } = await supabase
-          .from('clients')
-          .insert(seededLeads)
-          .select();
-
-        if (insertError) throw insertError;
-        setLeads(inserted.map(mapDbLeadToLead));
-      } else {
-        setLeads(data.map(mapDbLeadToLead));
-      }
-    } catch (err) {
-      console.error('Error fetching leads:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+  // Sync real DB leads → local state, with mock fallback
   useEffect(() => {
-    fetchLeads();
-  }, [fetchLeads]);
+    if (!loading) {
+      if (dbLeads.length > 0) {
+        setLeads(dbLeads.map(l => ({
+          ...l,
+          firstMsg: l.first_msg || '',
+          time: l.created_at ? formatTimeDiff(l.created_at) : 'agora mesmo',
+        } as Lead)));
+      } else {
+        // No DB leads yet — use mock data for demonstration
+        setLeads(MOCK_LEADS);
+      }
+    }
+  }, [dbLeads, loading]);
 
   const handleSimulate = async () => {
     try {
