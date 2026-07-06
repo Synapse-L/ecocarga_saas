@@ -103,7 +103,7 @@ const generateMockProposals = (): DashboardProposal[] => {
   return mockProposals.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 };
 
-export const getDashboardStats = async (realProposals: any[], userId?: string) => {
+export const getDashboardStats = async (realProposals: any[], userId?: string, skipAi = false) => {
   let mockProposals: DashboardProposal[] = [];
   if (typeof window !== 'undefined') {
     const hasRealDataKey = userId ? `proposalpro_has_real_data_${userId}` : 'proposalpro_has_real_data';
@@ -308,11 +308,20 @@ export const getDashboardStats = async (realProposals: any[], userId?: string) =
 
   // 13. IA Insights dinâmicos (Gemini)
   const insights: Array<{ type: string; title: string; description: string }> = [];
-  try {
-    const query = 'Forneça insights comerciais curtos e acionáveis baseados nos KPIs atuais.';
-    const aiResponse = await askGemini(query, [], {
-      totalProposals: totalCount,
-      totalProposalsGrowth: countGrowth,
+  
+  if (skipAi) {
+    // Fill in a simple static placeholder. This gets overridden by previous insights in page.tsx anyway.
+    insights.push({
+      type: 'success',
+      title: 'Desempenho Comercial',
+      description: `Taxa de conversão atual de ${conversionRate.toFixed(1)}%.`
+    });
+  } else {
+    try {
+      const query = 'Forneça insights comerciais curtos e acionáveis baseados nos KPIs atuais.';
+      const aiResponse = await askGemini(query, [], {
+        totalProposals: totalCount,
+        totalProposalsGrowth: countGrowth,
       totalValue: totalValue,
       totalValueGrowth: 0,
       conversionRate: conversionRate,
@@ -338,24 +347,25 @@ export const getDashboardStats = async (realProposals: any[], userId?: string) =
         insights.push({ type: parts[0].trim(), title: parts[1].trim(), description: parts[2].trim() });
       }
     });
-  } catch (e) {
-    console.error('Failed to get AI insights', e);
-    // fallback to static insights
-    insights.push({
-      type: 'success',
-      title: 'Desempenho Comercial',
-      description: `Suas conversões cresceram ${(conversionGrowth >= 0 ? '+' : '')}${conversionGrowth.toFixed(1)}% nos últimos 30 dias.`
-    });
-    insights.push({
-      type: 'info',
-      title: 'Taxa de Fechamento por Valor',
-      description: 'Projetos com carregadores rápidos (DC) acima de R$ 80.000 possuem taxa de fechamento 23% maior.'
-    });
-    insights.push({
-      type: 'revenue',
-      title: 'Previsão de Fechamento',
-      description: `Você pode fechar aproximadamente R$ ${(potentialValue * 0.45).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} neste mês com base nos negócios em negociação.`
-    });
+    } catch (e) {
+      console.error('Failed to get AI insights', e);
+      // fallback to static insights
+      insights.push({
+        type: 'success',
+        title: 'Desempenho Comercial',
+        description: `Suas conversões cresceram ${(conversionGrowth >= 0 ? '+' : '')}${conversionGrowth.toFixed(1)}% nos últimos 30 dias.`
+      });
+      insights.push({
+        type: 'info',
+        title: 'Taxa de Fechamento por Valor',
+        description: 'Projetos com carregadores rápidos (DC) acima de R$ 80.000 possuem taxa de fechamento 23% maior.'
+      });
+      insights.push({
+        type: 'revenue',
+        title: 'Previsão de Fechamento',
+        description: `Você pode fechar aproximadamente R$ ${Math.round(potentialValue * 0.45).toLocaleString('pt-BR')} neste mês.`
+      });
+    }
   }
 
   // 14. Timeline dynamic events

@@ -314,7 +314,10 @@ export default function Dashboard() {
         }
       }
 
-      const computed = await getDashboardStats(updatedProposals, userId || undefined);
+      const computed = await getDashboardStats(updatedProposals, userId || undefined, true);
+      if (stats?.insights) {
+        computed.insights = stats.insights;
+      }
       setStats(computed);
       if (typeof window !== 'undefined') {
         sessionStorage.setItem('dashboardStats', JSON.stringify(computed));
@@ -399,7 +402,10 @@ export default function Dashboard() {
       }
       
       // Update UI and stats for mocks immediately
-      const computed = await getDashboardStats(proposals, userId || undefined);
+      const computed = await getDashboardStats(proposals, userId || undefined, true);
+      if (stats?.insights) {
+        computed.insights = stats.insights;
+      }
       setStats(computed);
       if (typeof window !== 'undefined') {
         sessionStorage.setItem('dashboardStats', JSON.stringify(computed));
@@ -418,7 +424,10 @@ export default function Dashboard() {
     setProposals(updatedProposals);
 
     // Recalculate and update stats immediately
-    const computed = await getDashboardStats(updatedProposals, userId || undefined);
+    const computed = await getDashboardStats(updatedProposals, userId || undefined, true);
+    if (stats?.insights) {
+      computed.insights = stats.insights;
+    }
     setStats(computed);
     if (typeof window !== 'undefined') {
       sessionStorage.setItem('dashboardStats', JSON.stringify(computed));
@@ -531,7 +540,10 @@ export default function Dashboard() {
         return p;
       });
       setProposals(updatedProposals);
-      const computed = await getDashboardStats(updatedProposals, userId || undefined);
+      const computed = await getDashboardStats(updatedProposals, userId || undefined, true);
+      if (stats?.insights) {
+        computed.insights = stats.insights;
+      }
       setStats(computed);
       if (typeof window !== 'undefined') {
         sessionStorage.setItem('dashboardStats', JSON.stringify(computed));
