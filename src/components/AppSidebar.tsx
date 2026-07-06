@@ -94,18 +94,18 @@ export default function AppSidebar({ onRestartTour, onShowShortcuts }: AppSideba
           <NavSection label="Principal" />
           <NavItem icon={LayoutDashboard} label="Dashboard" href="/" />
           <NavItem icon={FileText} label="Propostas" href="#" />
-          <NavItem icon={Users} label="Clientes" href="/clients" badge="Novo" />
-          <NavItem icon={MessageSquare} label="Leads WhatsApp" href="/leads" badge="Novo" />
+          <NavItem icon={Users} label="Clientes" href="/clients" />
+          <NavItem icon={MessageSquare} label="Leads WhatsApp" href="/leads" />
 
           {/* Engenharia */}
           <NavSection label="Engenharia & Projetos" />
-          <NavItem icon={Compass} label="Planta 3D IA" href="/blueprint" badge="IA" />
-          <NavItem icon={Wrench} label="Instalações" href="/installations" badge="Novo" />
+          
+          
 
           {/* Gestão */}
           <NavSection label="Gestão" />
-          <NavItem icon={DollarSign} label="Comissões" href="/commissions" badge="Novo" />
-          <NavItem icon={BarChart3} label="Relatórios" href="/reports" badge="Novo" />
+          <NavItem icon={DollarSign} label="Comissões" href="/commissions" />
+          <NavItem icon={BarChart3} label="Relatórios" href="/reports" />
 
           {/* Admin */}
           {profile?.role === 'admin' && (
