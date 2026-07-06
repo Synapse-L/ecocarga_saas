@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   FileText, 
   Plus, 
@@ -540,13 +540,24 @@ export default function Dashboard() {
     }
   };
 
-  const handleDrag = (event: any, info: any) => {
+  const columnRectsRef = useRef<Array<{ status: string; rect: DOMRect; element: Element }>>([]);
+
+  const handleDragStart = () => {
     if (typeof window === 'undefined') return;
+    const cols = document.querySelectorAll('[data-column-status]');
+    columnRectsRef.current = Array.from(cols).map(col => ({
+      status: col.getAttribute('data-column-status') || '',
+      rect: col.getBoundingClientRect(),
+      element: col
+    }));
+  };
+
+  const handleDrag = (event: any, info: any) => {
+    if (typeof window === 'undefined' || columnRectsRef.current.length === 0) return;
     const x = info.point.x - window.scrollX;
     const y = info.point.y - window.scrollY;
     
-    const columns = document.querySelectorAll('[data-column-status]');
-    let bestColumn = null;
+    let bestStatus = null;
     let minDistance = Infinity;
     
     const getDistanceToRect = (px: number, py: number, rect: DOMRect) => {
@@ -555,16 +566,15 @@ export default function Dashboard() {
       return Math.sqrt(dx * dx + dy * dy);
     };
 
-    for (const col of Array.from(columns)) {
-      const rect = col.getBoundingClientRect();
-      const dist = getDistanceToRect(x, y, rect);
+    for (const col of columnRectsRef.current) {
+      const dist = getDistanceToRect(x, y, col.rect);
       if (dist < minDistance) {
         minDistance = dist;
-        bestColumn = col;
+        bestStatus = col.status;
       }
     }
     
-    const targetStatus = bestColumn && minDistance < 300 ? bestColumn.getAttribute('data-column-status') : null;
+    const targetStatus = minDistance < 300 ? bestStatus : null;
     
     if (targetStatus !== activeHoverColumn) {
       setActiveHoverColumn(targetStatus);
@@ -576,8 +586,8 @@ export default function Dashboard() {
     const x = info.point.x - window.scrollX;
     const y = info.point.y - window.scrollY;
     
-    const columns = document.querySelectorAll('[data-column-status]');
     let bestColumn = null;
+    let bestStatus = null;
     let minDistance = Infinity;
     
     const getDistanceToRect = (px: number, py: number, rect: DOMRect) => {
@@ -586,20 +596,19 @@ export default function Dashboard() {
       return Math.sqrt(dx * dx + dy * dy);
     };
 
-    for (const col of Array.from(columns)) {
-      const rect = col.getBoundingClientRect();
-      const dist = getDistanceToRect(x, y, rect);
+    for (const col of columnRectsRef.current) {
+      const dist = getDistanceToRect(x, y, col.rect);
       if (dist < minDistance) {
         minDistance = dist;
-        bestColumn = col;
+        bestColumn = col.element;
+        bestStatus = col.status;
       }
     }
     
-    const targetStatus = bestColumn ? bestColumn.getAttribute('data-column-status') : null;
-    
     setActiveHoverColumn(null);
+    columnRectsRef.current = []; // Clear cache on end
     
-    if (targetStatus && minDistance < 300 && bestColumn) {
+    if (bestStatus && minDistance < 300 && bestColumn) {
       const cardsInColumn = Array.from(bestColumn.querySelectorAll('[data-proposal-id]')) as HTMLElement[];
       const otherCards = cardsInColumn.filter(cardEl => cardEl.getAttribute('data-proposal-id') !== proposalId.toString());
       
@@ -613,7 +622,7 @@ export default function Dashboard() {
         }
       }
       
-      handleReorderCard(proposalId, targetStatus, insertIndex);
+      handleReorderCard(proposalId, bestStatus, insertIndex);
     }
   };
 
@@ -1628,6 +1637,7 @@ export default function Dashboard() {
                                       boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.15)",
                                       cursor: "grabbing"
                                     }}
+                                    onDragStart={handleDragStart}
                                     onDrag={(event, info) => handleDrag(event, info)}
                                     onDragEnd={(event, info) => handleDragEnd(event, info, prop.id, prop.status)}
                                     className="bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-800/40 p-4 rounded-2xl space-y-3 shadow-sm hover:shadow-md transition-[background-color,border-color,box-shadow] duration-200 group relative cursor-grab active:cursor-grabbing select-none touch-none animate-fade-in"
@@ -1732,6 +1742,7 @@ export default function Dashboard() {
                                       boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.15)",
                                       cursor: "grabbing"
                                     }}
+                                    onDragStart={handleDragStart}
                                     onDrag={(event, info) => handleDrag(event, info)}
                                     onDragEnd={(event, info) => handleDragEnd(event, info, prop.id, prop.status)}
                                     className="bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-800/40 p-4 rounded-2xl space-y-3 shadow-sm hover:shadow-md transition-[background-color,border-color,box-shadow] duration-200 group relative cursor-grab active:cursor-grabbing select-none touch-none animate-fade-in"
@@ -1836,6 +1847,7 @@ export default function Dashboard() {
                                       boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.15)",
                                       cursor: "grabbing"
                                     }}
+                                    onDragStart={handleDragStart}
                                     onDrag={(event, info) => handleDrag(event, info)}
                                     onDragEnd={(event, info) => handleDragEnd(event, info, prop.id, prop.status)}
                                     className="bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-800/40 p-4 rounded-2xl space-y-3 shadow-sm hover:shadow-md transition-[background-color,border-color,box-shadow] duration-200 group relative cursor-grab active:cursor-grabbing select-none touch-none animate-fade-in"
