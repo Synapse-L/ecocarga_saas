@@ -84,15 +84,17 @@ export function useClients(): UseClientsReturn {
       });
 
       setClients(enriched);
-    } catch (err: any) {
-      console.error('[useClients] Error fetching clients:', err);
-      setError(err.message || 'Erro ao buscar clientes');
+    } catch (err) {
+      const errMsg = (err as Record<string, unknown>)?.message as string || 'Erro ao buscar clientes';
+      console.error('[useClients] Error fetching clients:', errMsg);
+      setError(errMsg);
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchClients();
   }, [fetchClients]);
 
@@ -111,7 +113,7 @@ export function useClients(): UseClientsReturn {
 
       await fetchClients(); // Refresh to get enriched data
       return newClient as Client;
-    } catch (err: any) {
+    } catch (err) {
       console.error('[useClients] Error creating client:', err);
       return null;
     }
@@ -128,7 +130,7 @@ export function useClients(): UseClientsReturn {
 
       setClients(prev => prev.map(c => c.id === id ? { ...c, ...data } : c));
       return true;
-    } catch (err: any) {
+    } catch (err) {
       console.error('[useClients] Error updating client:', err);
       return false;
     }
@@ -145,7 +147,7 @@ export function useClients(): UseClientsReturn {
 
       setClients(prev => prev.filter(c => c.id !== id));
       return true;
-    } catch (err: any) {
+    } catch (err) {
       console.error('[useClients] Error deleting client:', err);
       return false;
     }

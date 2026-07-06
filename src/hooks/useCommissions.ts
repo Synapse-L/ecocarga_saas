@@ -44,8 +44,8 @@ export function useCommissions(): UseCommissionsReturn {
 
       setCommissions(data as Commission[] ?? []);
     } catch (err) {
-      const errMsg = err instanceof Error ? err.message : 'Erro ao buscar comissões';
-      console.error('[useCommissions] Error fetching commissions:', err);
+      const errMsg = (err as Record<string, unknown>)?.message as string || 'Erro ao buscar comissões';
+      console.error('[useCommissions] Error fetching commissions:', errMsg);
       setError(errMsg);
     } finally {
       setLoading(false);
@@ -53,6 +53,7 @@ export function useCommissions(): UseCommissionsReturn {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchCommissions();
   }, [fetchCommissions]);
 

@@ -40,15 +40,17 @@ export function useLeads(): UseLeadsReturn {
       if (fetchError) throw fetchError;
 
       setLeads(data as Lead[] ?? []);
-    } catch (err: any) {
-      console.error('[useLeads] Error fetching leads:', err);
-      setError(err.message || 'Erro ao buscar leads');
+    } catch (err) {
+      const errMsg = (err as Record<string, unknown>)?.message as string || 'Erro ao buscar leads';
+      console.error('[useLeads] Error fetching leads:', errMsg);
+      setError(errMsg);
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchLeads();
   }, [fetchLeads]);
 
@@ -67,7 +69,7 @@ export function useLeads(): UseLeadsReturn {
 
       setLeads(prev => [newLead as Lead, ...prev]);
       return newLead as Lead;
-    } catch (err: any) {
+    } catch (err) {
       console.error('[useLeads] Error creating lead:', err);
       return null;
     }
@@ -84,7 +86,7 @@ export function useLeads(): UseLeadsReturn {
 
       setLeads(prev => prev.map(l => l.id === id ? { ...l, ...data } : l));
       return true;
-    } catch (err: any) {
+    } catch (err) {
       console.error('[useLeads] Error updating lead:', err);
       return false;
     }
@@ -101,7 +103,7 @@ export function useLeads(): UseLeadsReturn {
 
       setLeads(prev => prev.filter(l => l.id !== id));
       return true;
-    } catch (err: any) {
+    } catch (err) {
       console.error('[useLeads] Error deleting lead:', err);
       return false;
     }
