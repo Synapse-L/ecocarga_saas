@@ -43,9 +43,10 @@ export function useCommissions(): UseCommissionsReturn {
       if (fetchError) throw fetchError;
 
       setCommissions(data as Commission[] ?? []);
-    } catch (err: any) {
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : 'Erro ao buscar comissões';
       console.error('[useCommissions] Error fetching commissions:', err);
-      setError(err.message || 'Erro ao buscar comissões');
+      setError(errMsg);
     } finally {
       setLoading(false);
     }
@@ -70,7 +71,7 @@ export function useCommissions(): UseCommissionsReturn {
 
       setCommissions(prev => [newCommission as Commission, ...prev]);
       return newCommission as Commission;
-    } catch (err: any) {
+    } catch (err) {
       console.error('[useCommissions] Error creating commission:', err);
       return null;
     }
@@ -87,7 +88,7 @@ export function useCommissions(): UseCommissionsReturn {
 
       setCommissions(prev => prev.map(c => c.id === id ? { ...c, ...data } : c));
       return true;
-    } catch (err: any) {
+    } catch (err) {
       console.error('[useCommissions] Error updating commission:', err);
       return false;
     }
