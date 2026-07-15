@@ -1,11 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-// Use service role to bypass RLS for public read + signed write
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+// Use service role to bypass RLS for public read + signed write.
+// Created lazily inside the handlers: instantiating at module scope makes
+// `next build` crash with "supabaseUrl is required" when the deploy
+// environment is missing the env vars.
+let cachedAdmin: SupabaseClient | null = null;
+function getSupabaseAdmin(): SupabaseClient | null {
+  if (cachedAdmin) return cachedAdmin;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) return null;
+  cachedAdmin = createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+  });
+  return cachedAdmin;
+}
+
+const missingConfigResponse = () =>
+  NextResponse.json(
+    { error: 'Servidor sem configuração do banco de dados. Contate o administrador.' },
+    { status: 500 }
+  );
 
 // GET /api/proposals/[token] — Fetch public proposal by token
 export async function GET(
@@ -13,6 +29,9 @@ export async function GET(
   { params }: { params: Promise<{ token: string }> }
 ) {
   const { token } = await params;
+
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin) return missingConfigResponse();
 
   const { data, error } = await supabaseAdmin
     .from('proposals')
@@ -56,6 +75,9 @@ export async function POST(
   if (!signature || typeof signature !== 'string') {
     return NextResponse.json({ error: 'Assinatura inválida.' }, { status: 400 });
   }
+
+  const supabaseAdmin = getSupabaseAdmin();
+  if (!supabaseAdmin) return missingConfigResponse();
 
   // Check proposal exists and is not already signed
   const { data: existing } = await supabaseAdmin
