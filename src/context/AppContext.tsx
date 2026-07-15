@@ -356,6 +356,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (user) {
         fetchProfile(user.id);
       }
+    }).catch((err) => {
+      // Network/DNS failures here otherwise surface as an unhandled "TypeError: Failed to fetch"
+      console.error('Não foi possível verificar a sessão do usuário (falha de rede com o Supabase):', err);
     });
 
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {

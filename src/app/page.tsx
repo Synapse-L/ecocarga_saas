@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   FileText, 
   Plus, 
@@ -14,7 +14,6 @@ import {
   LogOut,
   TrendingUp,
   TrendingDown,
-  Clock,
   CheckCircle2,
   ExternalLink,
   Loader2,
@@ -23,7 +22,6 @@ import {
   Sparkles,
   DollarSign,
   Activity,
-  Trash2,
   ArrowUpRight,
   FileSpreadsheet,
   ChevronLeft,
@@ -51,6 +49,9 @@ import { ShortcutsModal } from '@/components/dashboard/ShortcutsModal';
 import { ChartsSection } from '@/components/dashboard/ChartsSection';
 import { InsightsSection } from '@/components/dashboard/InsightsSection';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { KanbanBoard } from '@/components/dashboard/KanbanBoard';
+import { StatusBadge } from '@/components/dashboard/StatusBadge';
+import { getColumnKey, sortProposalsByKanbanOrder } from '@/lib/kanban-utils';
 import {
   AreaChart,
   Area,
@@ -83,6 +84,7 @@ export default function Dashboard() {
   const { restart: restartOnboarding } = useOnboarding();
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
   const [proposals, setProposals] = useState<any[]>([]);
   const router = useRouter();
   
@@ -109,7 +111,6 @@ export default function Dashboard() {
   const [viewMode, setViewMode] = useState<'table' | 'kanban'>('table');
   const [activeTab, setActiveTab] = useState<'charts' | 'proposals' | 'insights'>('charts');
   const [viewingId, setViewingId] = useState<string | null>(null);
-  const [activeHoverColumn, setActiveHoverColumn] = useState<string | null>(null);
   const [kanbanOrder, setKanbanOrder] = useState<string[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [kanbanSearch, setKanbanSearch] = useState('');
@@ -165,6 +166,7 @@ export default function Dashboard() {
     }
     try {
       const { data: { user } } = await supabase.auth.getUser();
+      setFetchError(false);
       if (!user) {
         router.push('/login');
         return;
@@ -180,10 +182,10 @@ export default function Dashboard() {
           template:templates(file_url)
         `)
         .order('created_at', { ascending: false });
-      
+
       const realData = proposalData || [];
       setProposals(realData);
-      
+
       // Calculate commercial intelligence stats
       const computed = await getDashboardStats(realData, user.id);
       setStats(computed);
@@ -192,7 +194,10 @@ export default function Dashboard() {
         window.dispatchEvent(new Event('dashboardStatsUpdated'));
       }
     } catch (error) {
+      // Network/DNS failures (e.g. Supabase project unreachable) land here as
+      // "TypeError: Failed to fetch" — show a retry state instead of spinning forever.
       console.error('Error fetching data:', error);
+      setFetchError(true);
     } finally {
       setLoading(false);
     }
@@ -400,7 +405,14 @@ export default function Dashboard() {
           }
         }
       }
-      
+
+      // Move the card to its new column instantly — don't wait on the full
+      // KPI recomputation below, which isn't even visible on the Kanban tab.
+      setStats((prev: any) => prev ? {
+        ...prev,
+        allProposals: prev.allProposals.map((p: any) => p.id === id ? { ...p, status: newStatus } : p)
+      } : prev);
+
       // Update UI and stats for mocks immediately
       const computed = await getDashboardStats(proposals, userId || undefined, true);
       if (stats?.insights) {
@@ -422,6 +434,13 @@ export default function Dashboard() {
       return p;
     });
     setProposals(updatedProposals);
+
+    // Move the card to its new column instantly — don't wait on the full
+    // KPI recomputation below, which isn't even visible on the Kanban tab.
+    setStats((prev: any) => prev ? {
+      ...prev,
+      allProposals: prev.allProposals.map((p: any) => p.id === id ? { ...p, status: newStatus, updated_at: new Date().toISOString() } : p)
+    } : prev);
 
     // Recalculate and update stats immediately
     const computed = await getDashboardStats(updatedProposals, userId || undefined, true);
@@ -461,21 +480,6 @@ export default function Dashboard() {
     }
   };
 
-  const sortProposalsByKanbanOrder = (proposalsList: DashboardProposal[]) => {
-    return [...proposalsList].sort((a, b) => {
-      const indexA = kanbanOrder.indexOf(a.id.toString());
-      const indexB = kanbanOrder.indexOf(b.id.toString());
-      
-      if (indexA !== -1 && indexB !== -1) {
-        return indexA - indexB;
-      }
-      if (indexA !== -1) return 1;
-      if (indexB !== -1) return -1;
-      
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-    });
-  };
-
   const handleReorderCard = async (proposalId: string, targetStatus: string, insertIndex: number) => {
     const proposal = proposals.find(p => p.id === proposalId) || stats?.allProposals?.find((p: any) => p.id === proposalId);
     if (!proposal) return;
@@ -483,7 +487,7 @@ export default function Dashboard() {
     const oldStatus = proposal.status;
     const statusChanged = oldStatus !== targetStatus;
     const allCurrent = stats?.allProposals || [];
-    
+
     const updatedList = allCurrent.map((p: any) => {
       if (p.id === proposalId) {
         return { ...p, status: targetStatus };
@@ -491,23 +495,11 @@ export default function Dashboard() {
       return p;
     });
 
-    const getColumnKey = (status: string) => {
-      if (status === 'Negociação' || status === 'Enviado' || status === 'Rascunho') {
-        return 'Em Andamento';
-      }
-      if (status === 'Concluído') {
-        return 'Aprovadas';
-      }
-      if (status === 'Vencido') {
-        return 'Desaprovadas';
-      }
-      return status;
-    };
-
     const targetColumnKey = getColumnKey(targetStatus);
-    
+
     const targetColItems = sortProposalsByKanbanOrder(
-      updatedList.filter((p: any) => getColumnKey(p.status) === targetColumnKey && p.id !== proposalId)
+      updatedList.filter((p: any) => getColumnKey(p.status) === targetColumnKey && p.id !== proposalId),
+      kanbanOrder
     );
 
     const draggedItem = updatedList.find((p: any) => p.id === proposalId);
@@ -516,7 +508,8 @@ export default function Dashboard() {
     }
 
     const otherColItems = sortProposalsByKanbanOrder(
-      updatedList.filter((p: any) => getColumnKey(p.status) !== targetColumnKey)
+      updatedList.filter((p: any) => getColumnKey(p.status) !== targetColumnKey),
+      kanbanOrder
     );
 
     const newOverallOrder = [
@@ -533,108 +526,8 @@ export default function Dashboard() {
     if (statusChanged) {
       await handleUpdateStatus(proposalId, targetStatus);
     } else {
-      const updatedProposals = proposals.map(p => {
-        if (p.id === proposalId) {
-          return { ...p, status: targetStatus };
-        }
-        return p;
-      });
-      setProposals(updatedProposals);
-      const computed = await getDashboardStats(updatedProposals, userId || undefined, true);
-      if (stats?.insights) {
-        computed.insights = stats.insights;
-      }
-      setStats(computed);
-      if (typeof window !== 'undefined') {
-        sessionStorage.setItem('dashboardStats', JSON.stringify(computed));
-        window.dispatchEvent(new Event('dashboardStatsUpdated'));
-      }
-    }
-  };
-
-  const columnRectsRef = useRef<Array<{ status: string; rect: DOMRect; element: Element }>>([]);
-
-  const handleDragStart = () => {
-    if (typeof window === 'undefined') return;
-    const cols = document.querySelectorAll('[data-column-status]');
-    columnRectsRef.current = Array.from(cols).map(col => ({
-      status: col.getAttribute('data-column-status') || '',
-      rect: col.getBoundingClientRect(),
-      element: col
-    }));
-  };
-
-  const handleDrag = (event: any, info: any) => {
-    if (typeof window === 'undefined' || columnRectsRef.current.length === 0) return;
-    const x = info.point.x - window.scrollX;
-    const y = info.point.y - window.scrollY;
-    
-    let bestStatus = null;
-    let minDistance = Infinity;
-    
-    const getDistanceToRect = (px: number, py: number, rect: DOMRect) => {
-      const dx = Math.max(rect.left - px, 0, px - rect.right);
-      const dy = Math.max(rect.top - py, 0, py - rect.bottom);
-      return Math.sqrt(dx * dx + dy * dy);
-    };
-
-    for (const col of columnRectsRef.current) {
-      const dist = getDistanceToRect(x, y, col.rect);
-      if (dist < minDistance) {
-        minDistance = dist;
-        bestStatus = col.status;
-      }
-    }
-    
-    const targetStatus = minDistance < 300 ? bestStatus : null;
-    
-    if (targetStatus !== activeHoverColumn) {
-      setActiveHoverColumn(targetStatus);
-    }
-  };
-
-  const handleDragEnd = (event: any, info: any, proposalId: string, currentStatus: string) => {
-    if (typeof window === 'undefined') return;
-    const x = info.point.x - window.scrollX;
-    const y = info.point.y - window.scrollY;
-    
-    let bestColumn = null;
-    let bestStatus = null;
-    let minDistance = Infinity;
-    
-    const getDistanceToRect = (px: number, py: number, rect: DOMRect) => {
-      const dx = Math.max(rect.left - px, 0, px - rect.right);
-      const dy = Math.max(rect.top - py, 0, py - rect.bottom);
-      return Math.sqrt(dx * dx + dy * dy);
-    };
-
-    for (const col of columnRectsRef.current) {
-      const dist = getDistanceToRect(x, y, col.rect);
-      if (dist < minDistance) {
-        minDistance = dist;
-        bestColumn = col.element;
-        bestStatus = col.status;
-      }
-    }
-    
-    setActiveHoverColumn(null);
-    columnRectsRef.current = []; // Clear cache on end
-    
-    if (bestStatus && minDistance < 300 && bestColumn) {
-      const cardsInColumn = Array.from(bestColumn.querySelectorAll('[data-proposal-id]')) as HTMLElement[];
-      const otherCards = cardsInColumn.filter(cardEl => cardEl.getAttribute('data-proposal-id') !== proposalId.toString());
-      
-      let insertIndex = otherCards.length;
-      for (let i = 0; i < otherCards.length; i++) {
-        const rect = otherCards[i].getBoundingClientRect();
-        const cardMiddleY = rect.top + rect.height / 2;
-        if (y < cardMiddleY) {
-          insertIndex = i;
-          break;
-        }
-      }
-      
-      handleReorderCard(proposalId, bestStatus, insertIndex);
+      // Same-column reorder: card membership doesn't change, so just persist the new order
+      // (already applied via setKanbanOrder above) — no need to touch proposals/stats at all.
     }
   };
 
@@ -1004,15 +897,17 @@ export default function Dashboard() {
     document.body.removeChild(link);
   };
 
-  // Filter, sort & paginate proposals locally
-  const getFilteredProposals = (): DashboardProposal[] => {
+  // Filter, sort & paginate proposals locally.
+  // Memoized so unrelated re-renders (e.g. Kanban hover state, which now lives
+  // in its own child component) don't force a fresh filter+sort pass every time.
+  const filteredProposals = useMemo((): DashboardProposal[] => {
     if (!stats || !stats.allProposals) return [];
     let list = [...stats.allProposals] as DashboardProposal[];
 
     // 1. Search text filter
     if (search.trim() !== '') {
       const q = search.toLowerCase();
-      list = list.filter(p => 
+      list = list.filter(p =>
         p.title.toLowerCase().includes(q) ||
         (p.client?.name || '').toLowerCase().includes(q) ||
         (p.commercial_data?.commercial?.productName || '').toLowerCase().includes(q)
@@ -1037,7 +932,7 @@ export default function Dashboard() {
       list = list.filter(p => {
         const pd = new Date(p.created_at);
         const diffDays = (now.getTime() - pd.getTime()) / (1000 * 3600 * 24);
-        
+
         if (periodFilter === '7d') return diffDays <= 7;
         if (periodFilter === '30d') return diffDays <= 30;
         if (periodFilter === 'month') return pd.getMonth() === now.getMonth() && pd.getFullYear() === now.getFullYear();
@@ -1065,9 +960,8 @@ export default function Dashboard() {
     });
 
     return list;
-  };
+  }, [stats, search, statusFilter, periodFilter, sortBy, sortOrder]);
 
-  const filteredProposals = getFilteredProposals();
   const totalPages = Math.max(1, Math.ceil(filteredProposals.length / itemsPerPage));
   const paginatedProposals = filteredProposals.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
@@ -1104,6 +998,27 @@ export default function Dashboard() {
     }
     return null;
   };
+
+  if (fetchError && !stats) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50/50 dark:bg-slate-950 transition-colors duration-300">
+        <div className="flex flex-col items-center gap-4 max-w-sm text-center px-6">
+          <p className="text-sm text-gray-600 dark:text-slate-300 font-bold">
+            Não foi possível conectar ao servidor.
+          </p>
+          <p className="text-xs text-gray-400 dark:text-slate-500">
+            Verifique sua conexão com a internet e tente novamente.
+          </p>
+          <button
+            onClick={() => fetchDashboardData()}
+            className="px-4 py-2 rounded-xl bg-primary text-white text-sm font-bold hover:opacity-90 transition-opacity"
+          >
+            Tentar novamente
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (loading || !stats) {
     return (
@@ -1576,354 +1491,14 @@ export default function Dashboard() {
                     )}
                   </>
                 ) : (
-                  (() => {
-                    const kanbanFiltered = kanbanSearch.trim()
-                      ? filteredProposals.filter(p =>
-                          (p.client?.name || p.commercial_data?.client?.name || '').toLowerCase().includes(kanbanSearch.toLowerCase()) ||
-                          (p.title || '').toLowerCase().includes(kanbanSearch.toLowerCase())
-                        )
-                      : filteredProposals;
-                    const sortedKanbanProposals = sortProposalsByKanbanOrder(kanbanFiltered);
-                    const getDaysInColumn = (p: any) => {
-                      const date = p.updated_at || p.created_at;
-                      return Math.floor((Date.now() - new Date(date).getTime()) / 86400000);
-                    };
-                    return (
-                      <div>
-                      {/* Kanban search bar */}
-                      <div className="px-6 pt-4 pb-2">
-                        <div className="relative max-w-xs">
-                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
-                          <input
-                            type="text"
-                            placeholder="Buscar no Kanban..."
-                            value={kanbanSearch}
-                            onChange={e => setKanbanSearch(e.target.value)}
-                            className="pl-9 pr-4 py-2 w-full border border-gray-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-900 text-sm text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/10 transition-all"
-                          />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-6 bg-gray-50/20 dark:bg-slate-950/10 transition-colors">
-                        
-                        {/* Column 1: Em Andamento */}
-                        <div className="space-y-4 flex flex-col h-full">
-                          <div className="flex items-center justify-between bg-purple-50/50 dark:bg-purple-950/10 border border-purple-100/50 dark:border-purple-900/20 px-4 py-3 rounded-2xl">
-                            <div className="flex items-center gap-2">
-                              <span className="w-2 h-2 rounded-full bg-purple-500"></span>
-                              <h3 className="text-xs font-black uppercase text-purple-700 dark:text-purple-400 tracking-wider">Em Andamento</h3>
-                            </div>
-                            <span className="text-[10px] font-black bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-400 px-2 py-0.5 rounded-full">
-                              {sortedKanbanProposals.filter(p => p.status === 'Negociação' || p.status === 'Enviado' || p.status === 'Rascunho').length}
-                            </span>
-                          </div>
-                          
-                          <div 
-                            data-column-status="Negociação" 
-                            className={`space-y-3 pr-1 min-h-[400px] flex-1 transition-[background-color,border-color] duration-300 rounded-2xl border-2 ${
-                              activeHoverColumn === 'Negociação' 
-                                ? 'bg-purple-100/30 dark:bg-purple-950/20 border-dashed border-purple-400 dark:border-purple-600' 
-                                : 'border-transparent'
-                            }`}
-                          >
-                            {sortedKanbanProposals.filter(p => p.status === 'Negociação' || p.status === 'Enviado' || p.status === 'Rascunho').length === 0 ? (
-                              <div className="text-center py-8 text-xs text-gray-400 dark:text-slate-500 bg-white dark:bg-slate-900/40 border border-dashed border-gray-100 dark:border-slate-800 rounded-2xl">
-                                Nenhuma proposta em andamento.
-                              </div>
-                            ) : (
-                              sortedKanbanProposals
-                                .filter(p => p.status === 'Negociação' || p.status === 'Enviado' || p.status === 'Rascunho')
-                                .map((prop) => (
-                                  <motion.div 
-                                    key={prop.id} 
-                                    layout
-                                    layoutDependency={prop.status}
-                                    data-proposal-id={prop.id}
-                                    drag
-                                    dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
-                                    dragElastic={1}
-                                    dragTransition={{ bounceStiffness: 600, bounceDamping: 20 }}
-                                    whileDrag={{ 
-                                      rotate: 4, 
-                                      scale: 1.03, 
-                                      zIndex: 50, 
-                                      boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.15)",
-                                      cursor: "grabbing"
-                                    }}
-                                    onDragStart={handleDragStart}
-                                    onDrag={(event, info) => handleDrag(event, info)}
-                                    onDragEnd={(event, info) => handleDragEnd(event, info, prop.id, prop.status)}
-                                    className="bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-800/40 p-4 rounded-2xl space-y-3 shadow-sm hover:shadow-md transition-[background-color,border-color,box-shadow] duration-200 group relative cursor-grab active:cursor-grabbing select-none touch-none animate-fade-in"
-                                  >
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleDelete(prop.id);
-                                      }}
-                                      className="absolute top-3 right-3 p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer z-10 pointer-events-auto"
-                                      title="Excluir Proposta"
-                                    >
-                                      <Trash2 size={13} />
-                                    </button>
-
-                                    <div className="pointer-events-none space-y-3">
-                                      <div className="flex justify-between items-start">
-                                        <div className="overflow-hidden w-full pr-6">
-                                          <span className="text-[9px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-wider block truncate">
-                                            {prop.client?.name || 'Cliente s/ nome'}
-                                          </span>
-                                          <h4 className="text-xs font-bold text-gray-900 dark:text-white mt-0.5 truncate">{prop.title}</h4>
-                                        </div>
-                                      </div>
-
-                                      {/* Days-in-column badge */}
-                                      {(() => {
-                                        const days = getDaysInColumn(prop);
-                                        const color = days <= 3 ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400'
-                                          : days <= 7 ? 'bg-yellow-50 text-yellow-600 dark:bg-yellow-950/20 dark:text-yellow-400'
-                                          : 'bg-red-50 text-red-600 dark:bg-red-950/20 dark:text-red-400';
-                                        return (
-                                          <span className={`inline-flex items-center gap-1 text-[9px] font-black px-2 py-0.5 rounded-full ${color}`}>
-                                            <Clock size={8} />
-                                            {days === 0 ? 'Hoje' : `${days}d nesta coluna`}
-                                          </span>
-                                        );
-                                      })()}
-
-                                      <div className="flex justify-between items-end border-t border-gray-100 dark:border-slate-800/30 pt-2.5">
-                                        <div>
-                                          <p className="text-[8px] font-bold text-gray-400 dark:text-slate-500 uppercase">Valor</p>
-                                          <p className="text-xs font-black text-gray-900 dark:text-white">
-                                            R$ {(prop.commercial_data?.commercial?.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                          </p>
-                                        </div>
-                                        <div className="text-right">
-                                          <p className="text-[8px] font-bold text-gray-400 dark:text-slate-500 uppercase">Status</p>
-                                          <span className="inline-block mt-0.5 scale-90 origin-right">
-                                            <StatusBadge status={prop.status} />
-                                          </span>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </motion.div>
-                                ))
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Column 2: Aprovadas */}
-                        <div className="space-y-4 flex flex-col h-full">
-                          <div className="flex items-center justify-between bg-emerald-50/50 dark:bg-emerald-950/10 border border-emerald-100/50 dark:border-emerald-900/20 px-4 py-3 rounded-2xl">
-                            <div className="flex items-center gap-2">
-                              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                              <h3 className="text-xs font-black uppercase text-emerald-700 dark:text-emerald-400 tracking-wider">Aprovadas</h3>
-                            </div>
-                            <span className="text-[10px] font-black bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded-full">
-                              {sortedKanbanProposals.filter(p => p.status === 'Concluído').length}
-                            </span>
-                          </div>
-                          
-                          <div 
-                            data-column-status="Concluído" 
-                            className={`space-y-3 pr-1 min-h-[400px] flex-1 transition-[background-color,border-color] duration-300 rounded-2xl border-2 ${
-                              activeHoverColumn === 'Concluído' 
-                                ? 'bg-emerald-100/30 dark:bg-emerald-950/20 border-dashed border-emerald-400 dark:border-emerald-600' 
-                                : 'border-transparent'
-                            }`}
-                          >
-                            {sortedKanbanProposals.filter(p => p.status === 'Concluído').length === 0 ? (
-                              <div className="text-center py-8 text-xs text-gray-400 dark:text-slate-500 bg-white dark:bg-slate-900/40 border border-dashed border-gray-100 dark:border-slate-800 rounded-2xl">
-                                Nenhuma proposta aprovada.
-                              </div>
-                            ) : (
-                              sortedKanbanProposals
-                                .filter(p => p.status === 'Concluído')
-                                .map((prop) => (
-                                  <motion.div 
-                                    key={prop.id} 
-                                    layout
-                                    layoutDependency={prop.status}
-                                    data-proposal-id={prop.id}
-                                    drag
-                                    dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
-                                    dragElastic={1}
-                                    dragTransition={{ bounceStiffness: 600, bounceDamping: 20 }}
-                                    whileDrag={{ 
-                                      rotate: 4, 
-                                      scale: 1.03, 
-                                      zIndex: 50, 
-                                      boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.15)",
-                                      cursor: "grabbing"
-                                    }}
-                                    onDragStart={handleDragStart}
-                                    onDrag={(event, info) => handleDrag(event, info)}
-                                    onDragEnd={(event, info) => handleDragEnd(event, info, prop.id, prop.status)}
-                                    className="bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-800/40 p-4 rounded-2xl space-y-3 shadow-sm hover:shadow-md transition-[background-color,border-color,box-shadow] duration-200 group relative cursor-grab active:cursor-grabbing select-none touch-none animate-fade-in"
-                                  >
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleDelete(prop.id);
-                                      }}
-                                      className="absolute top-3 right-3 p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer z-10 pointer-events-auto"
-                                      title="Excluir Proposta"
-                                    >
-                                      <Trash2 size={13} />
-                                    </button>
-
-                                    <div className="pointer-events-none space-y-3">
-                                      <div className="flex justify-between items-start">
-                                        <div className="overflow-hidden w-full pr-6">
-                                          <span className="text-[9px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-wider block truncate">
-                                            {prop.client?.name || 'Cliente s/ nome'}
-                                          </span>
-                                          <h4 className="text-xs font-bold text-gray-900 dark:text-white mt-0.5 truncate">{prop.title}</h4>
-                                        </div>
-                                      </div>
-
-                                      {/* Days-in-column badge */}
-                                      {(() => {
-                                        const days = getDaysInColumn(prop);
-                                        const color = days <= 3 ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400'
-                                          : days <= 7 ? 'bg-yellow-50 text-yellow-600 dark:bg-yellow-950/20 dark:text-yellow-400'
-                                          : 'bg-red-50 text-red-600 dark:bg-red-950/20 dark:text-red-400';
-                                        return (
-                                          <span className={`inline-flex items-center gap-1 text-[9px] font-black px-2 py-0.5 rounded-full ${color}`}>
-                                            <Clock size={8} />
-                                            {days === 0 ? 'Hoje' : `${days}d nesta coluna`}
-                                          </span>
-                                        );
-                                      })()}
-
-                                      <div className="flex justify-between items-end border-t border-gray-100 dark:border-slate-800/30 pt-2.5">
-                                        <div>
-                                          <p className="text-[8px] font-bold text-gray-400 dark:text-slate-500 uppercase">Valor</p>
-                                          <p className="text-xs font-black text-gray-900 dark:text-white">
-                                            R$ {(prop.commercial_data?.commercial?.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                          </p>
-                                        </div>
-                                        <div className="text-right">
-                                          <p className="text-[8px] font-bold text-gray-400 dark:text-slate-500 uppercase">Status</p>
-                                          <span className="inline-block mt-0.5 scale-90 origin-right">
-                                            <StatusBadge status={prop.status} />
-                                          </span>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </motion.div>
-                                ))
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Column 3: Desaprovadas */}
-                        <div className="space-y-4 flex flex-col h-full">
-                          <div className="flex items-center justify-between bg-red-50/50 dark:bg-red-950/10 border border-red-100/50 dark:border-red-900/20 px-4 py-3 rounded-2xl">
-                            <div className="flex items-center gap-2">
-                              <span className="w-2 h-2 rounded-full bg-red-500"></span>
-                              <h3 className="text-xs font-black uppercase text-red-700 dark:text-red-400 tracking-wider">Desaprovadas</h3>
-                            </div>
-                            <span className="text-[10px] font-black bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-400 px-2 py-0.5 rounded-full">
-                              {sortedKanbanProposals.filter(p => p.status === 'Vencido').length}
-                            </span>
-                          </div>
-                          
-                          <div 
-                            data-column-status="Vencido" 
-                            className={`space-y-3 pr-1 min-h-[400px] flex-1 transition-[background-color,border-color] duration-300 rounded-2xl border-2 ${
-                              activeHoverColumn === 'Vencido' 
-                                ? 'bg-red-100/30 dark:bg-red-950/20 border-dashed border-red-400 dark:border-red-600' 
-                                : 'border-transparent'
-                            }`}
-                          >
-                            {sortedKanbanProposals.filter(p => p.status === 'Vencido').length === 0 ? (
-                              <div className="text-center py-8 text-xs text-gray-400 dark:text-slate-500 bg-white dark:bg-slate-900/40 border border-dashed border-gray-100 dark:border-slate-800 rounded-2xl">
-                                Nenhuma proposta recusada.
-                              </div>
-                            ) : (
-                              sortedKanbanProposals
-                                .filter(p => p.status === 'Vencido')
-                                .map((prop) => (
-                                  <motion.div 
-                                    key={prop.id} 
-                                    layout
-                                    layoutDependency={prop.status}
-                                    data-proposal-id={prop.id}
-                                    drag
-                                    dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
-                                    dragElastic={1}
-                                    dragTransition={{ bounceStiffness: 600, bounceDamping: 20 }}
-                                    whileDrag={{ 
-                                      rotate: 4, 
-                                      scale: 1.03, 
-                                      zIndex: 50, 
-                                      boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.15)",
-                                      cursor: "grabbing"
-                                    }}
-                                    onDragStart={handleDragStart}
-                                    onDrag={(event, info) => handleDrag(event, info)}
-                                    onDragEnd={(event, info) => handleDragEnd(event, info, prop.id, prop.status)}
-                                    className="bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-800/40 p-4 rounded-2xl space-y-3 shadow-sm hover:shadow-md transition-[background-color,border-color,box-shadow] duration-200 group relative cursor-grab active:cursor-grabbing select-none touch-none animate-fade-in"
-                                  >
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleDelete(prop.id);
-                                      }}
-                                      className="absolute top-3 right-3 p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer z-10 pointer-events-auto"
-                                      title="Excluir Proposta"
-                                    >
-                                      <Trash2 size={13} />
-                                    </button>
-
-                                    <div className="pointer-events-none space-y-3">
-                                      <div className="flex justify-between items-start">
-                                        <div className="overflow-hidden w-full pr-6">
-                                          <span className="text-[9px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-wider block truncate">
-                                            {prop.client?.name || 'Cliente s/ nome'}
-                                          </span>
-                                          <h4 className="text-xs font-bold text-gray-900 dark:text-white mt-0.5 truncate">{prop.title}</h4>
-                                        </div>
-                                      </div>
-
-                                      {/* Days-in-column badge */}
-                                      {(() => {
-                                        const days = getDaysInColumn(prop);
-                                        const color = days <= 3 ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400'
-                                          : days <= 7 ? 'bg-yellow-50 text-yellow-600 dark:bg-yellow-950/20 dark:text-yellow-400'
-                                          : 'bg-red-50 text-red-600 dark:bg-red-950/20 dark:text-red-400';
-                                        return (
-                                          <span className={`inline-flex items-center gap-1 text-[9px] font-black px-2 py-0.5 rounded-full ${color}`}>
-                                            <Clock size={8} />
-                                            {days === 0 ? 'Hoje' : `${days}d nesta coluna`}
-                                          </span>
-                                        );
-                                      })()}
-
-                                      <div className="flex justify-between items-end border-t border-gray-100 dark:border-slate-800/30 pt-2.5">
-                                        <div>
-                                          <p className="text-[8px] font-bold text-gray-400 dark:text-slate-500 uppercase">Valor</p>
-                                          <p className="text-xs font-black text-gray-900 dark:text-white">
-                                            R$ {(prop.commercial_data?.commercial?.price || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                          </p>
-                                        </div>
-                                        <div className="text-right">
-                                          <p className="text-[8px] font-bold text-gray-400 dark:text-slate-500 uppercase">Status</p>
-                                          <span className="inline-block mt-0.5 scale-90 origin-right">
-                                            <StatusBadge status={prop.status} />
-                                          </span>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </motion.div>
-                                ))
-                            )}
-                          </div>
-                        </div>
-
-                      </div>
-                      </div>
-                    );
-                  })()
+                  <KanbanBoard
+                    proposals={filteredProposals}
+                    kanbanOrder={kanbanOrder}
+                    search={kanbanSearch}
+                    onSearchChange={setKanbanSearch}
+                    onReorder={handleReorderCard}
+                    onDelete={handleDelete}
+                  />
                 )}
               </div>
             </div>
@@ -2103,27 +1678,4 @@ function NavItem({ icon: Icon, label, active = false, href = "#" }: { icon: any,
 }
 
 // KPICard and MarketStatCard have been moved to src/components/dashboard/ChartsSection.tsx
-
-function StatusBadge({ status }: { status: string }) {
-  const styles: any = {
-    'Enviado': 'bg-blue-50 text-blue-750 border-blue-100 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-900/40',
-    'Negociação': 'bg-purple-50 text-purple-750 border-purple-100 dark:bg-purple-950/30 dark:text-purple-400 dark:border-purple-900/40',
-    'Concluído': 'bg-emerald-50 text-emerald-750 border-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900/40',
-    'Rascunho': 'bg-gray-100 text-gray-750 border-gray-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700',
-    'Vencido': 'bg-red-50 text-red-750 border-red-100 dark:bg-red-950/30 dark:text-red-400 dark:border-red-900/40',
-  };
-
-  const label: any = {
-    'Enviado': 'Enviada',
-    'Negociação': 'Negociação',
-    'Concluído': 'Aprovada',
-    'Rascunho': 'Rascunho',
-    'Vencido': 'Recusada',
-  };
-
-  return (
-    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${styles[status] || styles['Rascunho']}`}>
-      {label[status] || status}
-    </span>
-  );
-}
+// StatusBadge has been moved to src/components/dashboard/StatusBadge.tsx

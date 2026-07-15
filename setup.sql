@@ -51,15 +51,24 @@ ALTER TABLE templates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE proposals ENABLE ROW LEVEL SECURITY;
 
 -- Helper security function to check if user is admin (bypasses RLS recursion)
+-- search_path fixo + EXECUTE restrito: exigências do Security Advisor para SECURITY DEFINER
 CREATE OR REPLACE FUNCTION public.is_admin()
-RETURNS BOOLEAN AS $$
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
 BEGIN
   RETURN EXISTS (
     SELECT 1 FROM public.profiles
     WHERE id = auth.uid() AND role = 'admin'
   );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.is_admin() FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.is_admin() FROM anon;
+GRANT EXECUTE ON FUNCTION public.is_admin() TO authenticated;
 
 -- Policies for profiles
 CREATE POLICY "Users can view own or admin views all" ON profiles FOR SELECT USING (auth.uid() = id OR public.is_admin());
