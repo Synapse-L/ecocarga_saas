@@ -11,15 +11,24 @@ ADD COLUMN IF NOT EXISTS completed_tour BOOLEAN DEFAULT false;
 -- 2. Cria a função de segurança para verificar se o usuário é administrador.
 -- O parâmetro "SECURITY DEFINER" faz a função rodar com privilégios de criador,
 -- evitando loops infinitos de leitura RLS (recursão).
+-- search_path fixo + EXECUTE restrito: exigências do Security Advisor para SECURITY DEFINER
 CREATE OR REPLACE FUNCTION public.is_admin()
-RETURNS BOOLEAN AS $$
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
 BEGIN
   RETURN EXISTS (
     SELECT 1 FROM public.profiles
     WHERE id = auth.uid() AND role = 'admin'
   );
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.is_admin() FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.is_admin() FROM anon;
+GRANT EXECUTE ON FUNCTION public.is_admin() TO authenticated;
 
 -- 3. Atualiza as políticas de RLS da tabela de perfis
 -- Remove as políticas antigas se existirem
