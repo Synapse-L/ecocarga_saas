@@ -275,19 +275,36 @@ export const ProposalPage6: React.FC<Props> = ({ data }) => {
             </div>
           </div>
 
-          {/* Charger — sangra em todas as direções, inclusive bem abaixo do card */}
+          {/* ─── SLOT DO CARREGADOR ────────────────────────────────────────
+              Área visual EXATA onde a arte do carregador aparece:
+                  130 x 272 px  →  proporção 1 : 2,09
+              Ancorada 57px abaixo do topo do card verde; sangra 32px para a
+              direita (sobre a coluna técnica) e 33px abaixo da base do card.
+
+              A imagem enviada no cadastro do modelo (Admin → Carregadores →
+              "Foto do carregador") cai aqui com object-fit: contain, ou seja,
+              é encaixada dentro desta caixa sem distorcer.
+
+              PNG IDEAL: fundo transparente, proporção 1 : 2,09.
+              Ex.: 520 x 1088 px (o PDF é capturado em 3x, então o mínimo
+              para não perder nitidez é 390 x 816 px).
+              Proporções diferentes não quebram o layout — a arte apenas fica
+              centralizada dentro da caixa, com folga na dimensão que sobrar.
+              A sombra é aplicada pelo container, então o PNG deve vir SEM
+              sombra própria.                                                */}
           <div style={{
             position: 'absolute',
-            right: '-32px',    /* invade coluna técnica à direita */
-            top: '-40px',      /* voa acima do card */
-            bottom: '-130px',  /* desce ~130px abaixo da base do card */
+            right: '-32px',
+            top: '57px',
             width: '130px',
+            height: '272px',
             zIndex: 15,
             pointerEvents: 'none',
             filter: 'drop-shadow(0 16px 28px rgba(0,0,0,0.60)) drop-shadow(0 4px 10px rgba(0,0,0,0.32))',
           }}>
             {data.commercial?.imageUrl ? (
               <img src={data.commercial.imageUrl} alt={productName}
+                crossOrigin="anonymous"
                 style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
             ) : <ChargerSVG />}
           </div>

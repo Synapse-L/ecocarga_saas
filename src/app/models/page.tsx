@@ -499,10 +499,16 @@ export default function ModelsPage() {
 
                   <div className="space-y-1.5 col-span-2 border-t border-gray-100 dark:border-slate-800 pt-3 mt-1">
                     <label className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase">{t('chargerPhoto')}</label>
+                    <p className="text-[10px] text-gray-400 dark:text-slate-500 leading-relaxed">
+                      Esta imagem substitui o desenho do carregador na <strong>página 6</strong> da proposta.
+                      Use <strong>PNG com fundo transparente</strong>, sem sombra (a sombra é aplicada automaticamente).
+                      Proporção ideal <strong>1 : 2,09</strong> — ex.: <strong>520 × 1088 px</strong> — para preencher
+                      todo o espaço. Outras proporções também funcionam: a imagem fica centralizada, sem distorcer.
+                    </p>
                     <div className="flex items-center gap-4">
-                      <input 
-                        type="file" 
-                        accept="image/*"
+                      <input
+                        type="file"
+                        accept="image/png,image/webp,image/jpeg"
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) setImageFile(file);
