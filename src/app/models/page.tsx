@@ -30,10 +30,15 @@ export default function ModelsPage() {
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   
+  // Só o admin pode alterar/excluir modelos de fábrica (user_id NULL),
+  // que são compartilhados por todos os vendedores.
+  const isAdmin = profile?.role === 'admin';
+
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  
+  const [editingIsGlobal, setEditingIsGlobal] = useState(false);
+
   // Form states
   const [name, setName] = useState('');
   const [power, setPower] = useState('');
@@ -86,6 +91,7 @@ export default function ModelsPage() {
 
   const handleOpenAddModal = () => {
     setEditingId(null);
+    setEditingIsGlobal(false);
     setName('');
     setPower('');
     setPrice('');
@@ -100,10 +106,14 @@ export default function ModelsPage() {
   };
 
   const handleOpenEditModal = (model: any) => {
-    if (!model.user_id) {
-      alert('Modelos de sistema padrão (fábrica) não podem ser editados.');
+    const global = !model.user_id;
+    // Modelos de fábrica (user_id NULL) são compartilhados por todos os vendedores,
+    // então só o admin pode alterá-los — inclusive para anexar a foto do carregador.
+    if (global && !isAdmin) {
+      alert('Modelos de fábrica só podem ser editados por um administrador.');
       return;
     }
+    setEditingIsGlobal(global);
     setEditingId(model.id);
     setName(model.name);
     setPower(model.power);
@@ -119,21 +129,31 @@ export default function ModelsPage() {
   };
 
   const handleDelete = async (id: string, isGlobal: boolean) => {
-    if (isGlobal) {
-      alert('Modelos de sistema padrão (fábrica) não podem ser excluídos.');
+    if (isGlobal && !isAdmin) {
+      alert('Modelos de fábrica só podem ser excluídos por um administrador.');
       return;
     }
-    if (!confirm('Deseja realmente excluir este modelo de carregador?')) return;
+    if (!confirm(
+      isGlobal
+        ? 'Este é um modelo de FÁBRICA, compartilhado por todos os vendedores.\n\nExcluir vai removê-lo para toda a equipe. Deseja continuar?'
+        : 'Deseja realmente excluir este modelo de carregador?'
+    )) return;
 
     try {
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('charger_models')
-        .delete()
+        .delete({ count: 'exact' })
         .eq('id', id);
-      
+
       if (error) throw error;
-      
-      // Update local state
+
+      // O RLS pode recusar silenciosamente (0 linhas afetadas, sem erro):
+      // avisa em vez de sumir com o card e deixar o banco intacto.
+      if (count === 0) {
+        alert('Nada foi excluído — seu usuário não tem permissão para remover este modelo no banco de dados.');
+        return;
+      }
+
       setModels(models.filter(m => m.id !== id));
     } catch (err) {
       console.error(err);
@@ -171,7 +191,9 @@ export default function ModelsPage() {
       }
 
       const payload: any = {
-        user_id: userId,
+        // Modelo de fábrica precisa continuar com user_id NULL, senão vira
+        // modelo pessoal do admin e some para o resto da equipe.
+        user_id: editingIsGlobal ? null : userId,
         name,
         power,
         price: parseFloat(price.replace(',', '.')) || 0,
@@ -185,13 +207,22 @@ export default function ModelsPage() {
 
       if (editingId) {
         // Edit mode
-        const { error } = await supabase
+        let query = supabase
           .from('charger_models')
-          .update(payload)
-          .eq('id', editingId)
-          .eq('user_id', userId);
-        
+          .update(payload, { count: 'exact' })
+          .eq('id', editingId);
+
+        // Modelos próprios continuam restritos ao dono; os de fábrica são
+        // liberados pela policy de admin no banco.
+        if (!editingIsGlobal) query = query.eq('user_id', userId);
+
+        const { error, count } = await query;
+
         if (error) throw error;
+        if (count === 0) {
+          alert('Nada foi salvo — seu usuário não tem permissão para editar este modelo no banco de dados.');
+          return;
+        }
       } else {
         // Add mode
         const { error } = await supabase
@@ -342,21 +373,26 @@ export default function ModelsPage() {
                         <SpecLine label={t('communication')} value={m.communication} />
                       </div>
 
-                      {/* Actions */}
+                      {/* Actions — modelos próprios: sempre; de fábrica: só admin */}
                       <div className="pt-4 border-t border-gray-100 dark:border-slate-800 flex items-center justify-end gap-2">
-                        {!isGlobal ? (
+                        {(!isGlobal || isAdmin) ? (
                           <>
-                            <button 
+                            {isGlobal && (
+                              <span className="mr-auto text-[10px] text-amber-600 dark:text-amber-500 font-bold uppercase tracking-wide">
+                                Modelo da equipe
+                              </span>
+                            )}
+                            <button
                               onClick={() => handleOpenEditModal(m)}
                               className="p-2 text-gray-400 hover:text-primary dark:hover:text-accent hover:bg-primary/5 dark:hover:bg-accent/5 rounded-xl transition-all"
-                              title={t('save')}
+                              title={isGlobal ? 'Editar modelo da equipe (anexar foto, alterar specs)' : t('save')}
                             >
                               <Edit3 size={18} />
                             </button>
-                            <button 
+                            <button
                               onClick={() => handleDelete(m.id, isGlobal)}
                               className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-xl transition-all"
-                              title={t('delete')}
+                              title={isGlobal ? 'Excluir para toda a equipe' : t('delete')}
                             >
                               <Trash2 size={18} />
                             </button>
