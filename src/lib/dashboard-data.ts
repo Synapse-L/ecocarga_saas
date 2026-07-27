@@ -176,7 +176,9 @@ export const getDashboardStats = async (realProposals: any[], userId?: string, s
   // 1. Total de Propostas
   const totalCount = allProposals.length;
   const prevCount = previousMonthProposals.length;
-  const countGrowth = prevCount > 0 ? ((currentMonthProposals.length - prevCount) / prevCount) * 100 : 12;
+  // Sem propostas no mês anterior não há base de comparação: variação = 0
+  // (nada de números inventados no dashboard com o banco vazio)
+  const countGrowth = prevCount > 0 ? ((currentMonthProposals.length - prevCount) / prevCount) * 100 : 0;
 
   // 2. Valor Total Proposto
   const totalValue = allProposals.reduce((sum, p) => sum + (p.commercial_data?.commercial?.price || 0), 0);
@@ -190,10 +192,14 @@ export const getDashboardStats = async (realProposals: any[], userId?: string, s
   const closedCount = allProposals.filter(p => p.status === 'Concluído').length;
   const conversionRate = totalCount > 0 ? (closedCount / totalCount) * 100 : 0;
   
-  // Conversion Rate growth simulation
+  // Variação da taxa de conversão vs. mês anterior.
+  // Sem propostas no mês anterior não há base de comparação: variação = 0.
+  // (Antes usava um fallback fixo de 35, o que fazia o card mostrar "-35%"
+  // com o banco de dados vazio — um número totalmente inventado.)
   const prevClosed = previousMonthProposals.filter(p => p.status === 'Concluído').length;
-  const prevConversion = prevCount > 0 ? (prevClosed / prevCount) * 100 : 35;
-  const conversionGrowth = conversionRate - prevConversion;
+  const conversionGrowth = prevCount > 0
+    ? conversionRate - (prevClosed / prevCount) * 100
+    : 0;
 
   // 5. Ticket Médio
   const averageTicket = totalCount > 0 ? totalValue / totalCount : 0;
@@ -208,7 +214,8 @@ export const getDashboardStats = async (realProposals: any[], userId?: string, s
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     totalDays += diffDays || 5; // fallback min 5 days
   });
-  const avgClosingTimeDays = closedProposals.length > 0 ? Math.round(totalDays / closedProposals.length) : 8;
+  // Sem propostas fechadas não há média: 0 (antes mostrava "8 dias" inventados)
+  const avgClosingTimeDays = closedProposals.length > 0 ? Math.round(totalDays / closedProposals.length) : 0;
 
   // 7. Graph 1: Area Chart (Evolução 12 meses)
   const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
