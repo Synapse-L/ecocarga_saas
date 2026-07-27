@@ -3,6 +3,26 @@ import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 
 /**
+ * html2canvas rasterizes CSS gradients into tile canvases and calls
+ * createPattern() with them; if any element with a gradient background has a
+ * zero width/height at capture time, that throws
+ * "InvalidStateError: ... canvas element with a width or height of 0"
+ * and the whole download fails. This onclone hook strips background images
+ * from zero-sized elements in the clone — they are invisible anyway.
+ */
+const stripZeroSizedBackgrounds = (clonedDoc: Document) => {
+  clonedDoc.querySelectorAll<HTMLElement>('*').forEach(el => {
+    if (!(el instanceof clonedDoc.defaultView!.HTMLElement)) return;
+    if (el.offsetWidth < 1 || el.offsetHeight < 1) {
+      const style = clonedDoc.defaultView!.getComputedStyle(el);
+      if (style.backgroundImage !== 'none') {
+        el.style.backgroundImage = 'none';
+      }
+    }
+  });
+};
+
+/**
  * Service to handle PDF manipulation.
  */
 export class PDFService {
@@ -17,6 +37,7 @@ export class PDFService {
       scale: 3, // High quality to match 300 DPI A4 (2480x3508 approx)
       useCORS: true,
       logging: false,
+      onclone: stripZeroSizedBackgrounds,
     });
 
     // Capture as JPEG at 85% quality for a massive reduction in file size
@@ -389,6 +410,7 @@ export class PDFService {
         scale: 3,
         useCORS: true,
         logging: false,
+        onclone: stripZeroSizedBackgrounds,
       });
 
       const imgData = canvas.toDataURL('image/jpeg', 0.85);

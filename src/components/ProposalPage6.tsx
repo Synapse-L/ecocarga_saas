@@ -35,9 +35,10 @@ const ChargerSVG = () => (
     <rect x="40" y="222" width="30" height="7" rx="3" fill="#78838e"/>
     <rect x="25" y="28" width="60" height="160" rx="11" fill="rgba(0,0,0,0.18)"/>
     <rect x="23" y="26" width="64" height="160" rx="11" fill="#f0f4f6" stroke="#cdd6de" strokeWidth="1.2"/>
-    <rect x="23" y="26" width="13" height="160" fill="#181c20"/>
-    <rect x="23" y="26" width="13" height="160" rx="11 0 0 11" fill="#181c20"/>
-    <rect x="74" y="26" width="13" height="160" rx="0 11 11 0" fill="#2e6e2e"/>
+    {/* Painéis laterais com só os cantos externos arredondados.
+        SVG <rect> não aceita rx="11 0 0 11" (sintaxe CSS) — precisa de <path>. */}
+    <path d="M36 26 V186 H34 A11 11 0 0 1 23 175 V37 A11 11 0 0 1 34 26 Z" fill="#181c20"/>
+    <path d="M74 26 H76 A11 11 0 0 1 87 37 V175 A11 11 0 0 1 76 186 H74 Z" fill="#2e6e2e"/>
     <rect x="40" y="38" width="30" height="50" rx="4" fill="#0a0d10"/>
     <rect x="43" y="42" width="24" height="5" rx="1.5" fill="#1e90ff" opacity="0.9"/>
     <rect x="43" y="50" width="24" height="5" rx="1.5" fill="#1e90ff" opacity="0.65"/>
