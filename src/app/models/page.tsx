@@ -174,11 +174,17 @@ export default function ModelsPage() {
         const fileName = `${userId}/${Math.random()}.${fileExt}`;
         const filePath = `chargers/${fileName}`;
         
+        // upsert: false é essencial aqui. Com upsert o Storage executa
+        // INSERT ... ON CONFLICT DO UPDATE, e o Postgres exige policy de
+        // SELECT para ler a linha em conflito — o bucket não tem nenhuma
+        // (removida de propósito para fechar a listagem pública), então o
+        // upload falhava com "new row violates row-level security policy".
+        // O nome do arquivo é aleatório, então conflito nunca acontece.
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('templates')
           .upload(filePath, imageFile, {
             cacheControl: '3600',
-            upsert: true
+            upsert: false
           });
 
         if (uploadError) throw uploadError;

@@ -52,11 +52,15 @@ export default function TemplatesPage() {
       const fileExt = file.name.split('.').pop();
       const fileName = `${user.id}/${Math.random()}.${fileExt}`;
       
+      // upsert: false — ver comentário em src/app/models/page.tsx: com upsert o
+      // Storage faz INSERT ... ON CONFLICT DO UPDATE, que exige policy de SELECT
+      // no bucket (removida para fechar a listagem pública). Nome aleatório,
+      // então não há conflito a resolver.
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('templates')
         .upload(fileName, file, {
           cacheControl: '3600',
-          upsert: true
+          upsert: false
         });
 
       if (uploadError) throw uploadError;
