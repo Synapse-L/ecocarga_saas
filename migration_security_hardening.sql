@@ -37,7 +37,14 @@ GRANT EXECUTE ON FUNCTION public.is_admin() TO authenticated;
 -- passa por RLS e continua funcionando sem nenhuma política de SELECT.
 -- O app nunca chama storage.list() — a listagem de templates vem da tabela
 -- public.templates — então nenhuma política de leitura é necessária aqui.
--- As políticas de INSERT/UPDATE/DELETE (upload dos vendedores) não são tocadas.
+--
+-- ⚠️ ATENÇÃO — ERRO CONHECIDO DESTE PASSO:
+-- Se a policy "Permitir leitura pública" tiver sido criada no painel como
+-- FOR ALL (padrão de vários templates do Supabase), ela também concedia
+-- INSERT, e este DROP quebra o UPLOAD de arquivos com
+-- "new row violates row-level security policy".
+-- Rode migration_fix_storage_upload.sql logo em seguida para recriar as
+-- permissões de escrita (INSERT/UPDATE/DELETE) de forma explícita.
 DROP POLICY IF EXISTS "Permitir leitura pública" ON storage.objects;
 DROP POLICY IF EXISTS "Authenticated users can read templates" ON storage.objects;
 

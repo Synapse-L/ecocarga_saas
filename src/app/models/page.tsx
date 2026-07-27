@@ -234,9 +234,23 @@ export default function ModelsPage() {
 
       setIsModalOpen(false);
       fetchModelsAndUser();
-    } catch (err) {
+    } catch (err: unknown) {
       console.error(err);
-      alert('Erro ao salvar modelo.');
+      const msg = err instanceof Error ? err.message : String(err);
+      // Erro de RLS no Storage é o caso mais comum e o mais críptico:
+      // traduz para uma instrução acionável em vez de "Erro ao salvar modelo."
+      if (/row-level security|violates row-level/i.test(msg)) {
+        alert(
+          'O banco de dados recusou a gravação (regra de segurança).\n\n' +
+          'Se o erro cita "storage", falta liberar o upload no bucket: rode o ' +
+          'arquivo migration_fix_storage_upload.sql no SQL Editor do Supabase.\n\n' +
+          'Se cita "charger_models", você precisa ser admin para alterar modelos ' +
+          'de fábrica: rode migration_admin_manage_global_models.sql.\n\n' +
+          `Detalhe técnico: ${msg}`
+        );
+      } else {
+        alert(`Erro ao salvar modelo.\n\n${msg}`);
+      }
     } finally {
       setSaving(false);
     }
