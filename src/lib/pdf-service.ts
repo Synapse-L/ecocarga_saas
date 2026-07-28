@@ -19,13 +19,21 @@ import jsPDF from 'jspdf';
  * filtro. Por isso a regra principal agora é por atributo, não por medida.
  */
 const prepareCloneForCapture = (clonedDoc: Document) => {
-  // 1. Regra determinística: elementos sabidamente frágeis.
+  // 1. Elementos que dependem de filter: blur() e por isso não sobrevivem à
+  //    captura. O html2canvas 1.4.1 não implementa a propriedade `filter`
+  //    (verificado na fonte: zero ocorrências entre as propriedades suportadas),
+  //    então um brilho difuso vira uma elipse de borda dura com degradê em
+  //    degraus. Remover é melhor que exibir o artefato: o card sai levemente
+  //    mais chapado no PDF, porém limpo. Na tela nada muda.
+  clonedDoc.querySelectorAll('[data-pdf-remove]').forEach(el => el.remove());
+
+  // 2. Regra determinística: elementos sabidamente frágeis.
   clonedDoc.querySelectorAll<HTMLElement>('[data-pdf-flat-bg]').forEach(el => {
     el.style.backgroundImage = 'none';
     el.style.backgroundColor = el.dataset.pdfFlatBg || 'transparent';
   });
 
-  // 2. Rede de segurança para qualquer gradiente sub-pixel que venha a surgir.
+  // 3. Rede de segurança para qualquer gradiente sub-pixel que venha a surgir.
   //    Só roda se o clone já tiver layout — sem isso, todas as medidas seriam
   //    zero e apagaríamos os gradientes legítimos dos cards.
   const win = clonedDoc.defaultView;

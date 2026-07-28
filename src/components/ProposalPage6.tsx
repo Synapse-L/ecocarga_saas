@@ -75,6 +75,13 @@ const ChargerSVG = () => (
 );
 
 // ─── Gaussian blur white light overlay ────────────────────────────────────────
+// O html2canvas 1.4.1 NÃO implementa a propriedade CSS `filter` (conferido na
+// fonte da lib: zero ocorrências de "filter" entre as propriedades suportadas;
+// as menções a "blur" são só de text-shadow/box-shadow).
+// Sem o blur, este gradiente radial vira uma elipse de borda dura com degradê
+// em degraus — que é exatamente o "quadriculado estranho" no PDF.
+// Por isso o elemento é marcado com data-pdf-remove e apagado da cópia usada
+// na captura: na tela o brilho continua igual, no PDF o card sai limpo.
 const Glow = ({
   top, left, right, bottom,
   w = 90, h = 50, blur = 22, op = 0.13,
@@ -82,15 +89,17 @@ const Glow = ({
   top?: string|number; left?: string|number; right?: string|number; bottom?: string|number;
   w?: number; h?: number; blur?: number; op?: number;
 }) => (
-  <div style={{
-    position: 'absolute', top, left, right, bottom,
-    width: w, height: h,
-    background: `radial-gradient(ellipse at 50% 30%, rgba(255,255,255,${op + 0.07}) 0%, rgba(255,255,255,${op * 0.25}) 55%, transparent 100%)`,
-    filter: `blur(${blur}px)`,
-    borderRadius: '50%',
-    pointerEvents: 'none',
-    zIndex: 10,
-  }}/>
+  <div
+    data-pdf-remove="glow"
+    style={{
+      position: 'absolute', top, left, right, bottom,
+      width: w, height: h,
+      background: `radial-gradient(ellipse at 50% 30%, rgba(255,255,255,${op + 0.07}) 0%, rgba(255,255,255,${op * 0.25}) 55%, transparent 100%)`,
+      filter: `blur(${blur}px)`,
+      borderRadius: '50%',
+      pointerEvents: 'none',
+      zIndex: 10,
+    }}/>
 );
 
 // ─── Specular top-edge 1px streak ────────────────────────────────────────────
@@ -234,12 +243,15 @@ export const ProposalPage6: React.FC<Props> = ({ data }) => {
           }}>
             {/* Lighting layer 1: main top-left ambient */}
             <Glow top={-20} left={-20} w={180} h={100} blur={40} op={0.13}/>
-            {/* Lighting layer 2: soft centre-top fill */}
-            <div style={{
-              position: 'absolute', top: 0, left: '5%', right: '30%', height: '45%',
-              background: 'radial-gradient(ellipse at 30% 0%, rgba(255,255,255,0.10) 0%, transparent 70%)',
-              filter: 'blur(10px)', pointerEvents: 'none', zIndex: 10,
-            }}/>
+            {/* Lighting layer 2: soft centre-top fill — mesmo caso do Glow:
+                depende de filter: blur(), que o html2canvas ignora. */}
+            <div
+              data-pdf-remove="glow"
+              style={{
+                position: 'absolute', top: 0, left: '5%', right: '30%', height: '45%',
+                background: 'radial-gradient(ellipse at 30% 0%, rgba(255,255,255,0.10) 0%, transparent 70%)',
+                filter: 'blur(10px)', pointerEvents: 'none', zIndex: 10,
+              }}/>
             {/* Specular 1px streak */}
             <TopStreak opacity={0.42}/>
           </div>
