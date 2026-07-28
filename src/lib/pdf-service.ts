@@ -91,8 +91,14 @@ export class PDFService {
       onclone: prepareCloneForCapture,
     });
 
-    // Capture as JPEG at 85% quality for a massive reduction in file size
-    const imgData = canvas.toDataURL('image/jpeg', 0.85);
+    // Qualidade 0.95, não 0.85. As páginas são dominadas por gradientes escuros
+    // suaves, que são o pior caso para o JPEG: a 0.85 os blocos de 8x8 px do
+    // codec ficam visíveis como um quadriculado sobre o fundo verde.
+    // Medido contra o original, pixel a pixel, num gradiente equivalente:
+    //   0.85 -> erro máximo 68 | 0.95 -> erro máximo 24 | PNG -> 0
+    // PNG resolveria de vez, mas daria ~7 MB por página (contra ~420 KB do
+    // JPEG 0.95), inviabilizando o arquivo final.
+    const imgData = canvas.toDataURL('image/jpeg', 0.95);
     const base64Data = imgData.split(',')[1];
     const binaryString = atob(base64Data);
     const bytes = new Uint8Array(binaryString.length);
@@ -473,7 +479,9 @@ export class PDFService {
         onclone: prepareCloneForCapture,
       });
 
-      const imgData = canvas.toDataURL('image/jpeg', 0.85);
+      // Mesma qualidade da captura principal — ver comentário em
+      // captureElementAsJpgBytes sobre o quadriculado nos gradientes escuros.
+      const imgData = canvas.toDataURL('image/jpeg', 0.95);
       const pdf = new jsPDF({
         orientation: 'portrait',
         unit: 'pt',

@@ -296,8 +296,13 @@ export const ProposalPage6: React.FC<Props> = ({ data }) => {
               direita (sobre a coluna técnica) e 33px abaixo da base do card.
 
               A imagem enviada no cadastro do modelo (Admin → Carregadores →
-              "Foto do carregador") cai aqui com object-fit: contain, ou seja,
-              é encaixada dentro desta caixa sem distorcer.
+              "Foto do carregador") é encaixada dentro desta caixa sem distorcer.
+
+              IMPORTANTE: a imagem é aplicada como background-image com
+              background-size: contain, e NÃO como <img object-fit: contain>.
+              O html2canvas ignora object-fit e desenha a <img> esticada para
+              preencher a caixa — ficava certo na tela e distorcido no PDF.
+              background-size ele respeita. Não troque de volta para <img>.
 
               PNG IDEAL: fundo transparente, proporção 1 : 2,09.
               Ex.: 520 x 1088 px (o PDF é capturado em 3x, então o mínimo
@@ -317,9 +322,18 @@ export const ProposalPage6: React.FC<Props> = ({ data }) => {
             filter: 'drop-shadow(0 16px 28px rgba(0,0,0,0.60)) drop-shadow(0 4px 10px rgba(0,0,0,0.32))',
           }}>
             {data.commercial?.imageUrl ? (
-              <img src={data.commercial.imageUrl} alt={productName}
-                crossOrigin="anonymous"
-                style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+              <div
+                role="img"
+                aria-label={productName}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  backgroundImage: `url("${data.commercial.imageUrl}")`,
+                  backgroundSize: 'contain',
+                  backgroundPosition: 'center',
+                  backgroundRepeat: 'no-repeat',
+                }}
+              />
             ) : <ChargerSVG />}
           </div>
         </div>
