@@ -94,12 +94,21 @@ const Glow = ({
 );
 
 // ─── Specular top-edge 1px streak ────────────────────────────────────────────
+// ATENÇÃO: 1px de altura + gradiente é a combinação que quebra a geração do PDF.
+// O html2canvas cria um canvas com as dimensões arredondadas do elemento para
+// pintar o gradiente; 1px (ou menos, com a página em escala) vira 0 e o
+// createPattern lança InvalidStateError, abortando o download inteiro.
+// O data-pdf-flat-bg faz o PDFService trocar o gradiente por esta cor sólida
+// apenas na cópia usada na captura — na tela o gradiente continua igual.
+// Se criar outro elemento fino com gradiente, marque-o da mesma forma.
 const TopStreak = ({ opacity = 0.38 }: { opacity?: number }) => (
-  <div style={{
-    position: 'absolute', top: 0, left: '6%', right: '6%', height: '1px',
-    background: `linear-gradient(90deg, transparent, rgba(255,255,255,${opacity}) 35%, rgba(255,255,255,${opacity * 0.5}) 65%, transparent)`,
-    pointerEvents: 'none', zIndex: 12,
-  }}/>
+  <div
+    data-pdf-flat-bg={`rgba(255,255,255,${(opacity * 0.5).toFixed(3)})`}
+    style={{
+      position: 'absolute', top: 0, left: '6%', right: '6%', height: '1px',
+      background: `linear-gradient(90deg, transparent, rgba(255,255,255,${opacity}) 35%, rgba(255,255,255,${opacity * 0.5}) 65%, transparent)`,
+      pointerEvents: 'none', zIndex: 12,
+    }}/>
 );
 
 export const ProposalPage6: React.FC<Props> = ({ data }) => {
@@ -118,6 +127,11 @@ export const ProposalPage6: React.FC<Props> = ({ data }) => {
   const model         = data.commercial?.technicalSpecs?.model?.trim()         || '—';
   const observations  = data.commercial?.observations?.trim() || '';
   const deadline      = data.commercial?.deadline?.trim()     || '';
+
+  // Quais cards de preço exibir. Ausente = true, para que propostas salvas
+  // antes deste campo continuem mostrando as duas formas de pagamento.
+  const showCashPrice    = data.commercial?.showCashPrice    !== false;
+  const showInstallments = data.commercial?.showInstallments !== false;
 
   const formatted = priceNumber.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
   const [priceInt, priceDec] = formatted.split(',');
@@ -447,6 +461,7 @@ export const ProposalPage6: React.FC<Props> = ({ data }) => {
         }}>
 
           {/* ── Price Card 1: Cash ─────────────────────────────────────── */}
+          {showCashPrice && (
           <div style={{
             backgroundColor: '#181c20',
             borderRadius: '15px',
@@ -475,8 +490,10 @@ export const ProposalPage6: React.FC<Props> = ({ data }) => {
               + Frete
             </div>
           </div>
+          )}
 
           {/* ── Price Card 2: Installments ─────────────────────────────── */}
+          {showInstallments && (
           <div style={{
             backgroundColor: '#1e2226',
             borderRadius: '15px',
@@ -507,6 +524,7 @@ export const ProposalPage6: React.FC<Props> = ({ data }) => {
               + Acréscimo de Juros
             </div>
           </div>
+          )}
 
           {/* Disclaimer */}
           <div style={{ fontSize: '8pt', color: '#5a6370', lineHeight: 1.5, marginTop: '2.5mm', maxWidth: '110mm', textAlign: 'right' }}>

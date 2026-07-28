@@ -67,6 +67,7 @@ interface FormErrors {
   installments?: string;
   deadline?: string;
   validityDays?: string;
+  paymentDisplay?: string;
 }
 
 // ─── Estado inicial limpo (sem dados falsos) ───────────────────────────────────
@@ -87,6 +88,9 @@ function buildInitialFormData(): ProposalData {
       observations: '',
       deadline: '15 dias úteis',
       conditions: 'À vista',
+      // Ambas as formas de pagamento aparecem por padrão (comportamento antigo)
+      showCashPrice: true,
+      showInstallments: true,
       technicalSpecs: {
         powerSource: '',
         connectors: 1,
@@ -245,6 +249,8 @@ function NewProposalPage() {
         newErrors.deadline = 'Prazo de entrega é obrigatório.';
       if (formData.metadata.validityDays < 1 || formData.metadata.validityDays > 365)
         newErrors.validityDays = 'Validade deve ser entre 1 e 365 dias.';
+      if (!formData.commercial.showCashPrice && !formData.commercial.showInstallments)
+        newErrors.paymentDisplay = 'Selecione ao menos uma forma de pagamento para exibir na proposta.';
     }
 
     setErrors(newErrors);
@@ -692,6 +698,50 @@ function NewProposalPage() {
                           <option value="Transferência bancária">Transferência bancária</option>
                         </select>
                       </Field>
+
+                      {/* Quais cards de preço aparecem na página 6 da proposta */}
+                      <div className="md:col-span-2">
+                        <Field label="Exibir na proposta" error={errors.paymentDisplay}>
+                          <div className="flex flex-col sm:flex-row gap-3">
+                            {([
+                              { key: 'showCashPrice' as const, titulo: 'Valor à vista', desc: 'Mostra o preço cheio com "+ Frete"' },
+                              { key: 'showInstallments' as const, titulo: 'Parcelado no cartão', desc: 'Mostra o número de parcelas com "+ Juros"' },
+                            ]).map(({ key, titulo, desc }) => {
+                              const marcado = formData.commercial[key] !== false;
+                              return (
+                                <label
+                                  key={key}
+                                  className={`flex-1 flex items-start gap-3 p-3.5 rounded-xl border cursor-pointer transition-all ${
+                                    marcado
+                                      ? 'border-primary/40 bg-primary/5 dark:border-accent/40 dark:bg-accent/5'
+                                      : 'border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-950 hover:border-gray-200 dark:hover:border-slate-700'
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={marcado}
+                                    onChange={(e) => {
+                                      setFormData(prev => ({
+                                        ...prev,
+                                        commercial: { ...prev.commercial, [key]: e.target.checked }
+                                      }));
+                                      if (errors.paymentDisplay) setErrors(prev => ({ ...prev, paymentDisplay: undefined }));
+                                    }}
+                                    className="mt-0.5 w-4 h-4 accent-primary dark:accent-accent cursor-pointer flex-shrink-0"
+                                  />
+                                  <span className="min-w-0">
+                                    <span className="block text-sm font-bold text-gray-800 dark:text-slate-200">{titulo}</span>
+                                    <span className="block text-[11px] text-gray-400 dark:text-slate-500 mt-0.5">{desc}</span>
+                                  </span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </Field>
+                        <p className="text-[11px] text-gray-400 dark:text-slate-500 mt-2 ml-1">
+                          Desmarque uma delas para que apenas a outra apareça no bloco de valor da proposta.
+                        </p>
+                      </div>
 
                     </div>
                   </div>

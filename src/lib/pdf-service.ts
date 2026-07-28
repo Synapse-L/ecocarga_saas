@@ -3,22 +3,39 @@ import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 
 /**
- * html2canvas rasterizes CSS gradients into tile canvases and calls
- * createPattern() with them; if any element with a gradient background has a
- * zero width/height at capture time, that throws
- * "InvalidStateError: ... canvas element with a width or height of 0"
- * and the whole download fails. This onclone hook strips background images
- * from zero-sized elements in the clone — they are invisible anyway.
+ * Para pintar um gradiente CSS, o html2canvas cria um canvas com as dimensões
+ * arredondadas do elemento e chama createPattern() com ele. Elementos de 1px
+ * (ou menos, quando a página está renderizada em escala) arredondam para 0, e
+ * createPattern lança "InvalidStateError: ... width or height of 0", abortando
+ * a geração do PDF inteiro.
+ *
+ * Os culpados no layout atual são as linhas decorativas de 1px no topo dos
+ * cards escuros (TopStreak, em ProposalPage6). Elas são marcadas com
+ * data-pdf-flat-bg e aqui têm o gradiente trocado por uma cor sólida
+ * equivalente — só na cópia usada para a captura, então a tela não muda.
+ *
+ * Uma tentativa anterior media offsetWidth/offsetHeight, que são inteiros
+ * arredondados: um elemento de 1px dava offsetHeight === 1 e escapava do
+ * filtro. Por isso a regra principal agora é por atributo, não por medida.
  */
-const stripZeroSizedBackgrounds = (clonedDoc: Document) => {
+const prepareCloneForCapture = (clonedDoc: Document) => {
+  // 1. Regra determinística: elementos sabidamente frágeis.
+  clonedDoc.querySelectorAll<HTMLElement>('[data-pdf-flat-bg]').forEach(el => {
+    el.style.backgroundImage = 'none';
+    el.style.backgroundColor = el.dataset.pdfFlatBg || 'transparent';
+  });
+
+  // 2. Rede de segurança para qualquer gradiente sub-pixel que venha a surgir.
+  //    Só roda se o clone já tiver layout — sem isso, todas as medidas seriam
+  //    zero e apagaríamos os gradientes legítimos dos cards.
+  const win = clonedDoc.defaultView;
+  const body = clonedDoc.body;
+  if (!win || !body || body.getBoundingClientRect().height < 1) return;
+
   clonedDoc.querySelectorAll<HTMLElement>('*').forEach(el => {
-    if (!(el instanceof clonedDoc.defaultView!.HTMLElement)) return;
-    if (el.offsetWidth < 1 || el.offsetHeight < 1) {
-      const style = clonedDoc.defaultView!.getComputedStyle(el);
-      if (style.backgroundImage !== 'none') {
-        el.style.backgroundImage = 'none';
-      }
-    }
+    if (win.getComputedStyle(el).backgroundImage === 'none') return;
+    const r = el.getBoundingClientRect();
+    if (r.width < 1 || r.height < 1) el.style.backgroundImage = 'none';
   });
 };
 
@@ -71,7 +88,7 @@ export class PDFService {
       scale: 3, // High quality to match 300 DPI A4 (2480x3508 approx)
       useCORS: true,
       logging: false,
-      onclone: stripZeroSizedBackgrounds,
+      onclone: prepareCloneForCapture,
     });
 
     // Capture as JPEG at 85% quality for a massive reduction in file size
@@ -453,7 +470,7 @@ export class PDFService {
         scale: 3,
         useCORS: true,
         logging: false,
-        onclone: stripZeroSizedBackgrounds,
+        onclone: prepareCloneForCapture,
       });
 
       const imgData = canvas.toDataURL('image/jpeg', 0.85);

@@ -14,6 +14,13 @@ export interface ProposalData {
     deadline: string;
     conditions: string;
     imageUrl?: string;
+    /**
+     * Quais cards de preço aparecem na página 6.
+     * Opcionais e tratados como `true` quando ausentes, para que propostas
+     * salvas antes deste campo continuem mostrando as duas formas de pagamento.
+     */
+    showCashPrice?: boolean;
+    showInstallments?: boolean;
     technicalSpecs: {
       powerSource: string;
       connectors: number;
