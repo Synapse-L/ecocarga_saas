@@ -23,6 +23,40 @@ const stripZeroSizedBackgrounds = (clonedDoc: Document) => {
 };
 
 /**
+ * Página 7 fixa da proposta — PDF estático servido de /public.
+ * O arquivo foi exportado em 2480x3508 pt (proporção A4, mas com dimensões de
+ * pixel tratadas como pontos), então NUNCA é copiado direto: é sempre embutido
+ * e redesenhado no tamanho da página do template, senão sairia gigante.
+ */
+const STATIC_PAGE_7_URL = '/proposta-pagina-7.pdf';
+
+let staticPage7Cache: ArrayBuffer | null = null;
+
+const loadStaticPage7 = async (): Promise<ArrayBuffer> => {
+  if (staticPage7Cache) return staticPage7Cache;
+  const res = await fetch(STATIC_PAGE_7_URL);
+  if (!res.ok) throw new Error(`Não foi possível carregar a página 7 (${res.status})`);
+  staticPage7Cache = await res.arrayBuffer();
+  return staticPage7Cache;
+};
+
+/**
+ * Anexa a página 7 estática ao documento final, redimensionada para caber
+ * exatamente no formato das demais páginas.
+ */
+const addStaticPage7 = async (
+  finalDoc: PDFDocument,
+  width: number,
+  height: number
+): Promise<void> => {
+  const bytes = await loadStaticPage7();
+  const srcDoc = await PDFDocument.load(bytes, { updateMetadata: false });
+  const embedded = await finalDoc.embedPage(srcDoc.getPages()[0]);
+  const page = finalDoc.addPage([width, height]);
+  page.drawPage(embedded, { x: 0, y: 0, width, height });
+};
+
+/**
  * Service to handle PDF manipulation.
  */
 export class PDFService {
@@ -73,7 +107,7 @@ export class PDFService {
     templateUrl: string | null,
     coverElementId: string,
     page6ElementId: string,
-    pageOrder: Array<{ type: 'template' | 'saas-cover' | 'saas-page6'; index?: number }>,
+    pageOrder: Array<{ type: 'template' | 'saas-cover' | 'saas-page6' | 'static-page7'; index?: number }>,
     fileName: string
   ): Promise<void> {
     try {
@@ -102,6 +136,8 @@ export class PDFService {
             const page = finalDoc.addPage([595.27, 841.89]);
             const jpgImage = await finalDoc.embedJpg(page6ImageBytes);
             page.drawImage(jpgImage, { x: 0, y: 0, width: 595.27, height: 841.89 });
+          } else if (item.type === 'static-page7') {
+            await addStaticPage7(finalDoc, 595.27, 841.89);
           }
         }
         finalPdfBytes = await finalDoc.save();
@@ -141,6 +177,8 @@ export class PDFService {
           } else if (item.type === 'saas-page6' && saasPage6Doc) {
             const [copiedPage] = await finalDoc.copyPages(saasPage6Doc, [0]);
             finalDoc.addPage(copiedPage);
+          } else if (item.type === 'static-page7') {
+            await addStaticPage7(finalDoc, width, height);
           } else if (item.type === 'template' && typeof item.index === 'number') {
             if (item.index < baseDoc.getPageCount()) {
               const [copiedPage] = await finalDoc.copyPages(baseDoc, [item.index]);
@@ -316,7 +354,7 @@ export class PDFService {
     templateUrl: string | null,
     coverElementId: string,
     page6ElementId: string,
-    pageOrder: Array<{ type: 'template' | 'saas-cover' | 'saas-page6'; index?: number }>
+    pageOrder: Array<{ type: 'template' | 'saas-cover' | 'saas-page6' | 'static-page7'; index?: number }>
   ): Promise<void> {
     try {
       // Capture both if needed in the order
@@ -344,6 +382,9 @@ export class PDFService {
           const page = finalDoc.addPage([595.27, 841.89]);
           const jpgImage = await finalDoc.embedJpg(page6ImageBytes);
           page.drawImage(jpgImage, { x: 0, y: 0, width: 595.27, height: 841.89 });
+        }
+        if (pageOrder.some(item => item.type === 'static-page7')) {
+          await addStaticPage7(finalDoc, 595.27, 841.89);
         }
         finalPdfBytes = await finalDoc.save();
       } else {
@@ -379,6 +420,8 @@ export class PDFService {
           } else if (item.type === 'saas-page6' && saasPage6Doc) {
             const [copiedPage] = await finalDoc.copyPages(saasPage6Doc, [0]);
             finalDoc.addPage(copiedPage);
+          } else if (item.type === 'static-page7') {
+            await addStaticPage7(finalDoc, width, height);
           } else if (item.type === 'template' && typeof item.index === 'number') {
             if (item.index < baseDoc.getPageCount()) {
               const [copiedPage] = await finalDoc.copyPages(baseDoc, [item.index]);
