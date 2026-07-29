@@ -83,7 +83,7 @@ export default function AppSidebar({ onRestartTour, onShowShortcuts }: AppSideba
           <img src="/ecocarga-logo-small.png" alt="EcoCarga" className="w-8 h-8 object-contain" />
           <div>
             <span className="text-base font-black tracking-tight text-[var(--sidebar-text-active)] leading-none block">
-              Kepler's Proposal
+              Kepler&apos;s Proposals
             </span>
             <span className="text-[10px] text-[var(--sidebar-nav-text)] font-medium">EcoCarga SaaS</span>
           </div>
