@@ -179,7 +179,23 @@ export class PDFService {
         
         const baseDoc = await PDFDocument.load(templateBuffer);
         const firstPage = baseDoc.getPages()[0];
-        const { width, height } = firstPage.getSize();
+        const { width: tplW, height: tplH } = firstPage.getSize();
+
+        // NORMALIZAÇÃO DE TAMANHO — corrige o defeito mais visível do PDF.
+        // Templates exportados de ferramentas de design costumam trazer as
+        // dimensões de PIXEL gravadas como PONTOS: o template em uso tem
+        // 2480x3508 pt, ou seja, uma folha de 87 x 124 cm.
+        // Como o documento inteiro herda o tamanho da primeira página, a
+        // captura de 2382x3369 px era esticada por essa folha gigante e caía
+        // para ~69 DPI — os "quadradinhos" no PDF eram os pixels da imagem,
+        // visíveis a olho nu. Na tela isso não aparece, porque lá é HTML vivo.
+        // Reduzindo para A4, a MESMA captura passa a render 288 DPI.
+        // A proporção é idêntica na prática (2480/3508 = 0,7069 contra 0,7071
+        // do A4), então o layout não muda — só o tamanho do papel.
+        const A4_WIDTH = 595.28;
+        const fitScale = tplW > A4_WIDTH * 1.05 ? A4_WIDTH / tplW : 1;
+        const width = tplW * fitScale;
+        const height = tplH * fitScale;
 
         // 3. Create temporary documents for SaaS pages with matching size
         let saasCoverDoc: PDFDocument | null = null;
@@ -212,8 +228,20 @@ export class PDFService {
             await addStaticPage7(finalDoc, width, height);
           } else if (item.type === 'template' && typeof item.index === 'number') {
             if (item.index < baseDoc.getPageCount()) {
-              const [copiedPage] = await finalDoc.copyPages(baseDoc, [item.index]);
-              finalDoc.addPage(copiedPage);
+              if (fitScale === 1) {
+                // Template já está num tamanho normal: cópia direta preserva
+                // texto e vetores selecionáveis.
+                const [copiedPage] = await finalDoc.copyPages(baseDoc, [item.index]);
+                finalDoc.addPage(copiedPage);
+              } else {
+                // Template superdimensionado: precisa ser reduzido junto com o
+                // resto, senão o documento sairia com páginas de tamanhos
+                // diferentes. embedPage redesenha o conteúdo na escala nova —
+                // como é vetorial, não há perda de qualidade.
+                const embedded = await finalDoc.embedPage(baseDoc.getPage(item.index));
+                const page = finalDoc.addPage([width, height]);
+                page.drawPage(embedded, { x: 0, y: 0, width, height });
+              }
             }
           }
         }
@@ -423,7 +451,15 @@ export class PDFService {
         const templateBuffer = await templateResponse.arrayBuffer();
         const baseDoc = await PDFDocument.load(templateBuffer);
         const firstPage = baseDoc.getPages()[0];
-        const { width, height } = firstPage.getSize();
+        const { width: tplW, height: tplH } = firstPage.getSize();
+
+        // Mesma normalização do download — ver comentário em
+        // generateCustomOrderedPdf. Sem isto o preview mostraria uma
+        // qualidade diferente da do arquivo final.
+        const A4_WIDTH = 595.28;
+        const fitScale = tplW > A4_WIDTH * 1.05 ? A4_WIDTH / tplW : 1;
+        const width = tplW * fitScale;
+        const height = tplH * fitScale;
 
         // Create temporary document for SaaS cover with matching size
         let saasCoverDoc: PDFDocument | null = null;
@@ -455,8 +491,14 @@ export class PDFService {
             await addStaticPage7(finalDoc, width, height);
           } else if (item.type === 'template' && typeof item.index === 'number') {
             if (item.index < baseDoc.getPageCount()) {
-              const [copiedPage] = await finalDoc.copyPages(baseDoc, [item.index]);
-              finalDoc.addPage(copiedPage);
+              if (fitScale === 1) {
+                const [copiedPage] = await finalDoc.copyPages(baseDoc, [item.index]);
+                finalDoc.addPage(copiedPage);
+              } else {
+                const embedded = await finalDoc.embedPage(baseDoc.getPage(item.index));
+                const page = finalDoc.addPage([width, height]);
+                page.drawPage(embedded, { x: 0, y: 0, width, height });
+              }
             }
           }
         }
