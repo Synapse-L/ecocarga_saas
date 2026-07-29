@@ -74,28 +74,36 @@ const ChargerSVG = () => (
   </svg>
 );
 
-// ─── Gaussian blur white light overlay ────────────────────────────────────────
-// O html2canvas 1.4.1 NÃO implementa a propriedade CSS `filter` (conferido na
-// fonte da lib: zero ocorrências de "filter" entre as propriedades suportadas;
-// as menções a "blur" são só de text-shadow/box-shadow).
-// Sem o blur, este gradiente radial vira uma elipse de borda dura com degradê
-// em degraus — que é exatamente o "quadriculado estranho" no PDF.
-// Por isso o elemento é marcado com data-pdf-remove e apagado da cópia usada
-// na captura: na tela o brilho continua igual, no PDF o card sai limpo.
+// ─── Brilho ambiente, feito SÓ com degradê ───────────────────────────────────
+// REGRA DESTA PÁGINA: nada de filter: blur() / drop-shadow().
+// O html2canvas 1.4.1 não implementa a propriedade CSS `filter` (conferido na
+// fonte da lib: zero ocorrências entre as propriedades suportadas; as menções a
+// "blur" são de text-shadow/box-shadow). Tudo que dependia de filter aparecia
+// certo na tela e quebrado no PDF — foi a origem da maior parte dos defeitos.
+// Degradê, ao contrário, o html2canvas renderiza bem. Por isso a suavidade aqui
+// vem das paradas do próprio gradiente, e o resultado é idêntico nos dois
+// lugares. Se precisar de um efeito novo, resolva com degradê.
 const Glow = ({
   top, left, right, bottom,
-  w = 90, h = 50, blur = 22, op = 0.13,
+  w = 90, h = 50, op = 0.13,
 }: {
   top?: string|number; left?: string|number; right?: string|number; bottom?: string|number;
   w?: number; h?: number; blur?: number; op?: number;
 }) => (
   <div
-    data-pdf-remove="glow"
     style={{
       position: 'absolute', top, left, right, bottom,
       width: w, height: h,
-      background: `radial-gradient(ellipse at 50% 30%, rgba(255,255,255,${op + 0.07}) 0%, rgba(255,255,255,${op * 0.25}) 55%, transparent 100%)`,
-      filter: `blur(${blur}px)`,
+      // Queda em 6 paradas aproxima uma gaussiana usando só o gradiente.
+      // Antes eram 3 paradas + filter: blur(); a parada intermediária brusca
+      // aparecia como um anel visível quando o blur era descartado.
+      background: `radial-gradient(ellipse at 50% 35%,
+        rgba(255,255,255,${(op + 0.05).toFixed(3)}) 0%,
+        rgba(255,255,255,${(op * 0.72).toFixed(3)}) 22%,
+        rgba(255,255,255,${(op * 0.44).toFixed(3)}) 42%,
+        rgba(255,255,255,${(op * 0.22).toFixed(3)}) 60%,
+        rgba(255,255,255,${(op * 0.08).toFixed(3)}) 78%,
+        rgba(255,255,255,0) 100%)`,
       borderRadius: '50%',
       pointerEvents: 'none',
       zIndex: 10,
@@ -243,14 +251,17 @@ export const ProposalPage6: React.FC<Props> = ({ data }) => {
           }}>
             {/* Lighting layer 1: main top-left ambient */}
             <Glow top={-20} left={-20} w={180} h={100} blur={40} op={0.13}/>
-            {/* Lighting layer 2: soft centre-top fill — mesmo caso do Glow:
-                depende de filter: blur(), que o html2canvas ignora. */}
+            {/* Lighting layer 2: preenchimento suave do topo — só degradê */}
             <div
-              data-pdf-remove="glow"
               style={{
                 position: 'absolute', top: 0, left: '5%', right: '30%', height: '45%',
-                background: 'radial-gradient(ellipse at 30% 0%, rgba(255,255,255,0.10) 0%, transparent 70%)',
-                filter: 'blur(10px)', pointerEvents: 'none', zIndex: 10,
+                background: `radial-gradient(ellipse at 30% 0%,
+                  rgba(255,255,255,0.10) 0%,
+                  rgba(255,255,255,0.065) 28%,
+                  rgba(255,255,255,0.032) 50%,
+                  rgba(255,255,255,0.012) 72%,
+                  rgba(255,255,255,0) 100%)`,
+                pointerEvents: 'none', zIndex: 10,
               }}/>
             {/* Specular 1px streak */}
             <TopStreak opacity={0.42}/>
@@ -321,8 +332,29 @@ export const ProposalPage6: React.FC<Props> = ({ data }) => {
               para não perder nitidez é 390 x 816 px).
               Proporções diferentes não quebram o layout — a arte apenas fica
               centralizada dentro da caixa, com folga na dimensão que sobrar.
-              A sombra é aplicada pelo container, então o PNG deve vir SEM
-              sombra própria.                                                */}
+              O PNG deve vir SEM sombra própria: a sombra de contato é
+              desenhada abaixo, como degradê.                                */}
+
+          {/* Sombra de contato — degradê no lugar de drop-shadow.
+              filter: drop-shadow() era ignorado no PDF, então o carregador
+              saía "recortado", sem apoio no chão. Esta elipse escura resolve
+              e renderiza igual na tela e no arquivo. */}
+          <div style={{
+            position: 'absolute',
+            right: '-26px',
+            top: '316px',
+            width: '118px',
+            height: '26px',
+            zIndex: 14,
+            pointerEvents: 'none',
+            background: `radial-gradient(ellipse at 50% 50%,
+              rgba(0,0,0,0.42) 0%,
+              rgba(0,0,0,0.26) 30%,
+              rgba(0,0,0,0.12) 55%,
+              rgba(0,0,0,0.04) 78%,
+              rgba(0,0,0,0) 100%)`,
+          }}/>
+
           <div style={{
             position: 'absolute',
             right: '-32px',
@@ -331,7 +363,6 @@ export const ProposalPage6: React.FC<Props> = ({ data }) => {
             height: '272px',
             zIndex: 15,
             pointerEvents: 'none',
-            filter: 'drop-shadow(0 16px 28px rgba(0,0,0,0.60)) drop-shadow(0 4px 10px rgba(0,0,0,0.32))',
           }}>
             {data.commercial?.imageUrl ? (
               <div
