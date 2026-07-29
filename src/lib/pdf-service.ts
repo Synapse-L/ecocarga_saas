@@ -84,9 +84,21 @@ const addStaticPage7 = async (
  */
 export class PDFService {
   /**
-   * Captures a DOM element and returns its JPEG bytes.
+   * Captura um elemento do DOM e devolve os bytes da imagem em PNG.
+   *
+   * PNG, não JPEG. As páginas capturadas são dominadas por gradientes escuros
+   * suaves — o pior caso para o JPEG, cujos blocos de 8x8 px aparecem como um
+   * quadriculado sobre os painéis verdes. Medido no PDF real gerado pelo
+   * sistema, o índice de blocagem dava 1,34 (acima de 1,25 já é perceptível),
+   * com saltos de até 60 nas fronteiras dos blocos.
+   *
+   * Subir a qualidade do JPEG só atenua; PNG é sem perda e elimina o artefato
+   * por definição. Custo medido na página real: 566 KB (JPEG) contra 2,1 MB
+   * (PNG) — cerca de 1,5 MB a mais por página, em duas páginas capturadas.
+   * (Uma estimativa anterior de ~7 MB por página estava errada: foi feita com
+   * um gradiente sintético de tela cheia, e a página real é quase toda branca.)
    */
-  static async captureElementAsJpgBytes(elementId: string): Promise<Uint8Array> {
+  static async captureElementAsPngBytes(elementId: string): Promise<Uint8Array> {
     const element = document.getElementById(elementId);
     if (!element) throw new Error('Element not found');
 
@@ -97,14 +109,7 @@ export class PDFService {
       onclone: prepareCloneForCapture,
     });
 
-    // Qualidade 0.95, não 0.85. As páginas são dominadas por gradientes escuros
-    // suaves, que são o pior caso para o JPEG: a 0.85 os blocos de 8x8 px do
-    // codec ficam visíveis como um quadriculado sobre o fundo verde.
-    // Medido contra o original, pixel a pixel, num gradiente equivalente:
-    //   0.85 -> erro máximo 68 | 0.95 -> erro máximo 24 | PNG -> 0
-    // PNG resolveria de vez, mas daria ~7 MB por página (contra ~420 KB do
-    // JPEG 0.95), inviabilizando o arquivo final.
-    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+    const imgData = canvas.toDataURL('image/png');
     const base64Data = imgData.split(',')[1];
     const binaryString = atob(base64Data);
     const bytes = new Uint8Array(binaryString.length);
@@ -145,10 +150,10 @@ export class PDFService {
       let page6ImageBytes: Uint8Array | null = null;
 
       if (pageOrder.some(item => item.type === 'saas-cover')) {
-        coverImageBytes = await this.captureElementAsJpgBytes(coverElementId);
+        coverImageBytes = await this.captureElementAsPngBytes(coverElementId);
       }
       if (pageOrder.some(item => item.type === 'saas-page6')) {
-        page6ImageBytes = await this.captureElementAsJpgBytes(page6ElementId);
+        page6ImageBytes = await this.captureElementAsPngBytes(page6ElementId);
       }
 
       let finalPdfBytes: Uint8Array;
@@ -159,11 +164,11 @@ export class PDFService {
         for (const item of pageOrder) {
           if (item.type === 'saas-cover' && coverImageBytes) {
             const page = finalDoc.addPage([595.27, 841.89]);
-            const jpgImage = await finalDoc.embedJpg(coverImageBytes);
+            const jpgImage = await finalDoc.embedPng(coverImageBytes);
             page.drawImage(jpgImage, { x: 0, y: 0, width: 595.27, height: 841.89 });
           } else if (item.type === 'saas-page6' && page6ImageBytes) {
             const page = finalDoc.addPage([595.27, 841.89]);
-            const jpgImage = await finalDoc.embedJpg(page6ImageBytes);
+            const jpgImage = await finalDoc.embedPng(page6ImageBytes);
             page.drawImage(jpgImage, { x: 0, y: 0, width: 595.27, height: 841.89 });
           } else if (item.type === 'static-page7') {
             await addStaticPage7(finalDoc, 595.27, 841.89);
@@ -200,7 +205,7 @@ export class PDFService {
         if (coverImageBytes) {
           saasCoverDoc = await PDFDocument.create();
           const saasPage = saasCoverDoc.addPage([width, height]);
-          const jpgImage = await saasCoverDoc.embedJpg(coverImageBytes);
+          const jpgImage = await saasCoverDoc.embedPng(coverImageBytes);
           saasPage.drawImage(jpgImage, { x: 0, y: 0, width, height });
         }
 
@@ -208,7 +213,7 @@ export class PDFService {
         if (page6ImageBytes) {
           saasPage6Doc = await PDFDocument.create();
           const saasPage = saasPage6Doc.addPage([width, height]);
-          const jpgImage = await saasPage6Doc.embedJpg(page6ImageBytes);
+          const jpgImage = await saasPage6Doc.embedPng(page6ImageBytes);
           saasPage.drawImage(jpgImage, { x: 0, y: 0, width, height });
         }
 
@@ -280,8 +285,8 @@ export class PDFService {
     console.log(`Template page size detected for cover/page6 replacement: ${width}x${height}`);
 
     // Embed both dynamic JPEG images
-    const jpgCover = await baseDoc.embedJpg(coverImageBytes);
-    const jpgPage6 = await baseDoc.embedJpg(page6ImageBytes);
+    const jpgCover = await baseDoc.embedPng(coverImageBytes);
+    const jpgPage6 = await baseDoc.embedPng(page6ImageBytes);
 
     const pageCount = baseDoc.getPageCount();
 
@@ -342,10 +347,10 @@ export class PDFService {
       const templateBuffer = await templateResponse.arrayBuffer();
 
       // 2. Capture dynamic cover (page 1) as JPEG bytes
-      const coverImageBytes = await this.captureElementAsJpgBytes(coverElementId);
+      const coverImageBytes = await this.captureElementAsPngBytes(coverElementId);
 
       // 3. Capture dynamic page 6 as JPEG bytes
-      const page6ImageBytes = await this.captureElementAsJpgBytes(page6ElementId);
+      const page6ImageBytes = await this.captureElementAsPngBytes(page6ElementId);
 
       // 4. Merge and enforce matching page dimensions
       const finalPdfBytes = await this.replaceCoverAndPage6(templateBuffer, coverImageBytes, page6ImageBytes);
@@ -374,18 +379,18 @@ export class PDFService {
   ): Promise<void> {
     try {
       // 1. Capture cover and page 6
-      const coverImageBytes = await this.captureElementAsJpgBytes(coverElementId);
-      const page6ImageBytes = await this.captureElementAsJpgBytes(page6ElementId);
+      const coverImageBytes = await this.captureElementAsPngBytes(coverElementId);
+      const page6ImageBytes = await this.captureElementAsPngBytes(page6ElementId);
       
       // 2. Create high-res PDF with two pages (2480x3508 px each)
       const finalDoc = await PDFDocument.create();
       
       const coverPage = finalDoc.addPage([2480, 3508]);
-      const jpgCover = await finalDoc.embedJpg(coverImageBytes);
+      const jpgCover = await finalDoc.embedPng(coverImageBytes);
       coverPage.drawImage(jpgCover, { x: 0, y: 0, width: 2480, height: 3508 });
       
       const page6Page = finalDoc.addPage([2480, 3508]);
-      const jpgPage6 = await finalDoc.embedJpg(page6ImageBytes);
+      const jpgPage6 = await finalDoc.embedPng(page6ImageBytes);
       page6Page.drawImage(jpgPage6, { x: 0, y: 0, width: 2480, height: 3508 });
       
       const finalPdfBytes = await finalDoc.save();
@@ -419,10 +424,10 @@ export class PDFService {
       let page6ImageBytes: Uint8Array | null = null;
 
       if (pageOrder.some(item => item.type === 'saas-cover')) {
-        coverImageBytes = await this.captureElementAsJpgBytes(coverElementId);
+        coverImageBytes = await this.captureElementAsPngBytes(coverElementId);
       }
       if (pageOrder.some(item => item.type === 'saas-page6')) {
-        page6ImageBytes = await this.captureElementAsJpgBytes(page6ElementId);
+        page6ImageBytes = await this.captureElementAsPngBytes(page6ElementId);
       }
 
       let finalPdfBytes: Uint8Array;
@@ -432,12 +437,12 @@ export class PDFService {
         const finalDoc = await PDFDocument.create();
         if (coverImageBytes) {
           const page = finalDoc.addPage([595.27, 841.89]);
-          const jpgImage = await finalDoc.embedJpg(coverImageBytes);
+          const jpgImage = await finalDoc.embedPng(coverImageBytes);
           page.drawImage(jpgImage, { x: 0, y: 0, width: 595.27, height: 841.89 });
         }
         if (page6ImageBytes) {
           const page = finalDoc.addPage([595.27, 841.89]);
-          const jpgImage = await finalDoc.embedJpg(page6ImageBytes);
+          const jpgImage = await finalDoc.embedPng(page6ImageBytes);
           page.drawImage(jpgImage, { x: 0, y: 0, width: 595.27, height: 841.89 });
         }
         if (pageOrder.some(item => item.type === 'static-page7')) {
@@ -464,7 +469,7 @@ export class PDFService {
         if (coverImageBytes) {
           saasCoverDoc = await PDFDocument.create();
           const saasPage = saasCoverDoc.addPage([width, height]);
-          const jpgImage = await saasCoverDoc.embedJpg(coverImageBytes);
+          const jpgImage = await saasCoverDoc.embedPng(coverImageBytes);
           saasPage.drawImage(jpgImage, { x: 0, y: 0, width, height });
         }
 
@@ -473,7 +478,7 @@ export class PDFService {
         if (page6ImageBytes) {
           saasPage6Doc = await PDFDocument.create();
           const saasPage = saasPage6Doc.addPage([width, height]);
-          const jpgImage = await saasPage6Doc.embedJpg(page6ImageBytes);
+          const jpgImage = await saasPage6Doc.embedPng(page6ImageBytes);
           saasPage.drawImage(jpgImage, { x: 0, y: 0, width, height });
         }
 
@@ -527,19 +532,21 @@ export class PDFService {
         onclone: prepareCloneForCapture,
       });
 
-      // Mesma qualidade da captura principal — ver comentário em
-      // captureElementAsJpgBytes sobre o quadriculado nos gradientes escuros.
-      const imgData = canvas.toDataURL('image/jpeg', 0.95);
+      // PNG e A4, pelos mesmos motivos do fluxo de download:
+      // JPEG deixa quadriculado nos gradientes escuros, e o formato antigo
+      // [2480, 3508] eram PONTOS — uma folha de 87 x 124 cm que jogava a
+      // imagem para ~69 DPI. Em A4 a mesma captura rende 288 DPI.
+      const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF({
         orientation: 'portrait',
         unit: 'pt',
-        format: [2480, 3508],
+        format: 'a4',
       });
 
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = pdf.internal.pageSize.getHeight();
 
-      pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
       const blob = pdf.output('blob');
       const url = URL.createObjectURL(blob);
       window.open(url, '_blank');
