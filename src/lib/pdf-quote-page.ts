@@ -1,4 +1,5 @@
 import { PDFDocument, PDFFont, PDFPage, StandardFonts, rgb } from 'pdf-lib';
+import { ProposalData, lerItens } from '@/types/proposal';
 
 /**
  * Página de orçamento desenhada DIRETO no PDF, com primitivas do pdf-lib.
@@ -65,6 +66,87 @@ export type DadosOrcamento = {
 
 const brl = (v: number) =>
   v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/** Baixa a imagem do produto. Falha nunca derruba a proposta — só fica sem foto. */
+const baixarImagem = async (url?: string) => {
+  if (!url) return null;
+  try {
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    const bytes = new Uint8Array(await r.arrayBuffer());
+    const tipo: 'png' | 'jpg' =
+      bytes[0] === 0xff && bytes[1] === 0xd8 ? 'jpg' : 'png';
+    return { bytes, tipo };
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Traduz a proposta salva no banco para o formato da página de orçamento.
+ * Usa lerItens(), então funciona igual para propostas antigas (um item) e novas.
+ */
+export async function montarDadosOrcamento(
+  data: ProposalData,
+  vendedor: string
+): Promise<DadosOrcamento> {
+  const itensBrutos = lerItens(data.commercial);
+
+  const itens: ItemOrcamento[] = await Promise.all(
+    itensBrutos.map(async (i) => {
+      const img = await baixarImagem(i.imageUrl);
+      const s = i.technicalSpecs || ({} as any);
+      const detalhe = [
+        s.powerSource,
+        s.connectors ? `${s.connectors}x ${s.connectorType || 'conector'}` : null,
+        s.communication,
+        s.model,
+      ].filter(Boolean).join(' · ');
+
+      return {
+        descricao: [i.productName, i.power].filter(Boolean).join(' — '),
+        detalhe,
+        quantidade: Number(i.quantity) || 1,
+        precoUnitario: Number(i.unitPrice) || 0,
+        imagemBytes: img?.bytes ?? null,
+        imagemTipo: img?.tipo,
+      };
+    })
+  );
+
+  return {
+    cliente: {
+      nome: data.client?.name || '',
+      telefone: data.client?.phone || '',
+      endereco: data.client?.address || '',
+    },
+    emissao: data.metadata?.emissionDate || new Date().toLocaleDateString('pt-BR'),
+    validadeDias: data.metadata?.validityDays ?? 15,
+    prazoEntrega: data.commercial?.deadline || '',
+    condicaoPagamento: data.commercial?.conditions || '',
+    vendedor,
+    itens,
+    parcelas: data.commercial?.installments || 10,
+    mostrarAVista: data.commercial?.showCashPrice !== false,
+    mostrarParcelado: data.commercial?.showInstallments !== false,
+    observacoes: data.commercial?.observations || undefined,
+  };
+}
+
+/**
+ * Gera a página de orçamento sozinha, como Blob.
+ *
+ * É o que a tela de revisão exibe: em vez de renderizar um HTML "parecido" com
+ * o PDF, mostra o PDF de verdade num iframe. Assim a pré-visualização e o
+ * arquivo final não podem divergir — que foi a origem de boa parte dos
+ * problemas do formato anterior.
+ */
+export async function gerarOrcamentoBlob(data: ProposalData, vendedor: string): Promise<Blob> {
+  const doc = await PDFDocument.create();
+  await drawQuotePage(doc, await montarDadosOrcamento(data, vendedor));
+  const bytes = await doc.save();
+  return new Blob([new Uint8Array(bytes)], { type: 'application/pdf' });
+}
 
 /** Corta o texto para caber em `maxW`, terminando em reticências. */
 const cortar = (txt: string, font: PDFFont, size: number, maxW: number) => {

@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { ProposalPage6 } from '@/components/ProposalPage6';
+import { gerarOrcamentoBlob } from '@/lib/pdf-quote-page';
 import { ProposalCover } from '@/components/ProposalCover';
 import {
   ProposalData, ProposalFormData, ItemProposta, criarItemVazio, calcularTotal, sincronizarEspelhos,
@@ -174,6 +174,9 @@ function NewProposalPage() {
 
   const [formData, setFormData] = useState<ProposalFormData>(buildInitialFormData);
 
+  // Blob da página de valores, exibida na revisão dentro de um iframe.
+  const [orcamentoUrl, setOrcamentoUrl] = useState<string | null>(null);
+
   const steps = [
     { id: 'client',     title: t('stepClient'),     icon: User },
     { id: 'commercial', title: t('stepCommercial'),  icon: DollarSign },
@@ -182,6 +185,33 @@ function NewProposalPage() {
   ];
 
   useEffect(() => { fetchData(); }, []);
+
+  /**
+   * Regera a página de valores quando o vendedor abre a aba de revisão ou muda
+   * algo do comercial. `cancelado` evita que uma geração antiga sobrescreva uma
+   * mais recente, e a URL anterior é revogada para não vazar memória.
+   */
+  useEffect(() => {
+    if (currentStep !== 3 || previewTab !== 'page6') return;
+    let cancelado = false;
+    let urlCriada: string | null = null;
+
+    (async () => {
+      try {
+        const blob = await gerarOrcamentoBlob(formData, profile?.full_name || '');
+        if (cancelado) return;
+        urlCriada = URL.createObjectURL(blob);
+        setOrcamentoUrl(prev => {
+          if (prev) URL.revokeObjectURL(prev);
+          return urlCriada;
+        });
+      } catch (e) {
+        console.error('Falha ao gerar a pré-visualização dos valores:', e);
+      }
+    })();
+
+    return () => { cancelado = true; };
+  }, [currentStep, previewTab, formData, profile?.full_name]);
 
   useEffect(() => {
     const leadId = searchParams.get('leadId');
@@ -1066,12 +1096,27 @@ function NewProposalPage() {
                       }}
                       className="md:![transform:scale(0.65)]"
                     >
-                      {previewTab === 'cover' ? (
+                      {previewTab === 'cover' && (
                         <ProposalCover data={formData} representativeName={profile?.full_name} />
-                      ) : (
-                        <ProposalPage6 data={formData} />
                       )}
                     </div>
+
+                    {/* Valores: mostra o PDF de verdade, não uma imitação em HTML.
+                        Assim a pré-visualização não pode divergir do arquivo final. */}
+                    {previewTab === 'page6' && (
+                      orcamentoUrl ? (
+                        <iframe
+                          src={`${orcamentoUrl}#toolbar=0&navpanes=0&view=FitH`}
+                          title="Pré-visualização dos valores"
+                          className="absolute inset-0 w-full h-full border-0"
+                        />
+                      ) : (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-gray-400">
+                          <Loader2 className="animate-spin" size={28} />
+                          <span className="text-xs font-bold uppercase tracking-wider">Gerando pré-visualização</span>
+                        </div>
+                      )
+                    )}
                   </div>
 
                   <div className="text-center mt-2">

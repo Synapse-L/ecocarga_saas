@@ -38,7 +38,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { PDFService } from '@/lib/pdf-service';
-import { ProposalPage6 } from '@/components/ProposalPage6';
+import { montarDadosOrcamento } from '@/lib/pdf-quote-page';
 import { ProposalCover } from '@/components/ProposalCover';
 import { useApp } from '@/context/AppContext';
 import { getDashboardStats, DashboardProposal } from '@/lib/dashboard-data';
@@ -647,12 +647,20 @@ export default function Dashboard() {
           index: page.index !== null ? page.index : undefined
         }));
 
+        // A página de valores é desenhada nativamente no PDF (texto vetorial),
+        // não mais capturada do DOM.
+        const quoteData = await montarDadosOrcamento(
+          selectedProposal.commercial_data,
+          profile?.full_name || ''
+        );
+
         await PDFService.generateCustomOrderedPdf(
           selectedProposal.template.file_url,
           'proposal-cover',
           'proposal-page-6',
           pageOrderPayload,
-          `Proposta_${selectedProposal.client?.name || selectedProposal.id}`
+          `Proposta_${selectedProposal.client?.name || selectedProposal.id}`,
+          quoteData
         );
       } catch (err) {
         console.error(err);
@@ -1055,7 +1063,6 @@ export default function Dashboard() {
         {currentProposal && (
           <>
             <ProposalCover data={currentProposal} representativeName={profile?.full_name} />
-            <ProposalPage6 data={currentProposal} />
           </>
         )}
       </div>

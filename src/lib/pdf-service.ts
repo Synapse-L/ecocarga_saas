@@ -1,6 +1,7 @@
 import { PDFDocument } from 'pdf-lib';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import { drawQuotePage, DadosOrcamento } from '@/lib/pdf-quote-page';
 
 /**
  * Para pintar um gradiente CSS, o html2canvas cria um canvas com as dimensões
@@ -142,17 +143,24 @@ export class PDFService {
     coverElementId: string,
     page6ElementId: string,
     pageOrder: Array<{ type: 'template' | 'saas-cover' | 'saas-page6' | 'static-page7'; index?: number }>,
-    fileName: string
+    fileName: string,
+    /**
+     * Dados da página de valores. Quando presente, ela é DESENHADA no PDF com
+     * primitivas do pdf-lib (texto vetorial, ~4 KB) em vez de fotografada do
+     * DOM. É o caminho normal; `page6ElementId` só é usado como reserva para
+     * propostas que ainda dependam do componente antigo.
+     */
+    quoteData?: DadosOrcamento | null
   ): Promise<void> {
     try {
-      // 1. Capture dynamic pages as JPEG bytes (only if they are in pageOrder)
+      // 1. Capture dynamic pages as PNG bytes (only if they are in pageOrder)
       let coverImageBytes: Uint8Array | null = null;
       let page6ImageBytes: Uint8Array | null = null;
 
       if (pageOrder.some(item => item.type === 'saas-cover')) {
         coverImageBytes = await this.captureElementAsPngBytes(coverElementId);
       }
-      if (pageOrder.some(item => item.type === 'saas-page6')) {
+      if (!quoteData && pageOrder.some(item => item.type === 'saas-page6')) {
         page6ImageBytes = await this.captureElementAsPngBytes(page6ElementId);
       }
 
@@ -166,6 +174,8 @@ export class PDFService {
             const page = finalDoc.addPage([595.27, 841.89]);
             const jpgImage = await finalDoc.embedPng(coverImageBytes);
             page.drawImage(jpgImage, { x: 0, y: 0, width: 595.27, height: 841.89 });
+          } else if (item.type === 'saas-page6' && quoteData) {
+            await drawQuotePage(finalDoc, quoteData);
           } else if (item.type === 'saas-page6' && page6ImageBytes) {
             const page = finalDoc.addPage([595.27, 841.89]);
             const jpgImage = await finalDoc.embedPng(page6ImageBytes);
@@ -224,6 +234,8 @@ export class PDFService {
           if (item.type === 'saas-cover' && saasCoverDoc) {
             const [copiedPage] = await finalDoc.copyPages(saasCoverDoc, [0]);
             finalDoc.addPage(copiedPage);
+          } else if (item.type === 'saas-page6' && quoteData) {
+            await drawQuotePage(finalDoc, quoteData);
           } else if (item.type === 'saas-page6' && saasPage6Doc) {
             const [copiedPage] = await finalDoc.copyPages(saasPage6Doc, [0]);
             finalDoc.addPage(copiedPage);
