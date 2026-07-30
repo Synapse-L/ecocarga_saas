@@ -14,12 +14,16 @@ import {
   Loader2,
   ChevronRight,
   AlertCircle,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { ProposalPage6 } from '@/components/ProposalPage6';
 import { ProposalCover } from '@/components/ProposalCover';
-import { ProposalData } from '@/types/proposal';
+import {
+  ProposalData, ProposalFormData, ItemProposta, criarItemVazio, calcularTotal, sincronizarEspelhos,
+} from '@/types/proposal';
 import { useApp } from '@/context/AppContext';
 import { useToast } from '@/components/Toast';
 
@@ -68,11 +72,12 @@ interface FormErrors {
   deadline?: string;
   validityDays?: string;
   paymentDisplay?: string;
+  itens?: string;
 }
 
 // ─── Estado inicial limpo (sem dados falsos) ───────────────────────────────────
 
-function buildInitialFormData(): ProposalData {
+function buildInitialFormData(): ProposalFormData {
   return {
     client: {
       name: '',
@@ -80,9 +85,19 @@ function buildInitialFormData(): ProposalData {
       address: '',
     },
     commercial: {
+      // Fonte da verdade: a proposta começa com um item em branco.
+      itens: [criarItemVazio()],
+      // Espelhos, recalculados por sincronizarEspelhos() antes de salvar.
       productName: '',
       power: '',
       price: 0,
+      technicalSpecs: {
+        powerSource: '',
+        connectors: 1,
+        connectorType: '',
+        communication: '',
+        model: '',
+      },
       installments: 1,
       estimatedSavings: '',
       observations: '',
@@ -91,13 +106,6 @@ function buildInitialFormData(): ProposalData {
       // Ambas as formas de pagamento aparecem por padrão (comportamento antigo)
       showCashPrice: true,
       showInstallments: true,
-      technicalSpecs: {
-        powerSource: '',
-        connectors: 1,
-        connectorType: '',
-        communication: '',
-        model: '',
-      },
     },
     metadata: {
       templateId: '',
@@ -164,7 +172,7 @@ function NewProposalPage() {
   // Estado de exibição do preço como string formatada (ex: "30.966,36")
   const [priceDisplay, setPriceDisplay] = useState('');
 
-  const [formData, setFormData] = useState<ProposalData>(buildInitialFormData);
+  const [formData, setFormData] = useState<ProposalFormData>(buildInitialFormData);
 
   const steps = [
     { id: 'client',     title: t('stepClient'),     icon: User },
@@ -237,12 +245,17 @@ function NewProposalPage() {
     }
 
     if (step === 1) {
-      if (!formData.commercial.productName.trim())
-        newErrors.productName = 'Nome do produto é obrigatório.';
-      if (!formData.commercial.power.trim())
-        newErrors.power = 'Potência é obrigatória.';
-      if (formData.commercial.price <= 0)
-        newErrors.price = 'O valor deve ser maior que zero.';
+      const itens = formData.commercial.itens;
+      const semNome  = itens.findIndex(i => !i.productName.trim());
+      const semPot   = itens.findIndex(i => !i.power.trim());
+      const semPreco = itens.findIndex(i => !(i.unitPrice > 0));
+      const qtdRuim  = itens.findIndex(i => !(i.quantity >= 1));
+
+      if (semNome >= 0)  newErrors.itens = `Produto ${semNome + 1}: informe o nome.`;
+      else if (semPot >= 0)   newErrors.itens = `Produto ${semPot + 1}: informe a potência.`;
+      else if (semPreco >= 0) newErrors.itens = `Produto ${semPreco + 1}: o valor deve ser maior que zero.`;
+      else if (qtdRuim >= 0)  newErrors.itens = `Produto ${qtdRuim + 1}: a quantidade mínima é 1.`;
+
       if (formData.commercial.installments < 1 || formData.commercial.installments > 10)
         newErrors.installments = 'Parcelamento deve ser entre 1 e 10.';
       if (!formData.commercial.deadline.trim())
@@ -271,30 +284,58 @@ function NewProposalPage() {
 
   // ── Seleção de modelo de carregador ─────────────────────────────────────────
 
-  const handleSelectCharger = (selectedId: string) => {
-    if (!selectedId) return;
-    const model = chargerModels.find(m => m.id === selectedId);
-    if (!model) return;
+  /** Aplica uma alteração a um item da lista, mantendo os demais intactos. */
+  const alterarItem = (idx: number, patch: Partial<ItemProposta>) => {
+    setFormData(prev => {
+      const itens = prev.commercial.itens.map((it, i) => (i === idx ? { ...it, ...patch } : it));
+      return { ...prev, commercial: { ...prev.commercial, itens } };
+    });
+    if (errors.itens) setErrors(prev => ({ ...prev, itens: undefined }));
+  };
+
+  const adicionarItem = () => {
     setFormData(prev => ({
       ...prev,
-      commercial: {
-        ...prev.commercial,
-        productName: model.name,
-        power: model.power,
-        price: model.price,
-        imageUrl: model.image_url,
-        technicalSpecs: {
-          powerSource:   model.power_source,
-          connectors:    model.connectors,
-          connectorType: model.connector_type,
-          communication: model.communication,
-          model:         model.model_name,
-        },
-      },
+      commercial: { ...prev.commercial, itens: [...prev.commercial.itens, criarItemVazio()] },
     }));
-    // Atualiza o display do preço ao selecionar carregador
-    setPriceDisplay(formatCurrency(model.price));
   };
+
+  /** A proposta precisa de pelo menos um item, então o último não é removível. */
+  const removerItem = (idx: number) => {
+    setFormData(prev => {
+      if (prev.commercial.itens.length <= 1) return prev;
+      return {
+        ...prev,
+        commercial: { ...prev.commercial, itens: prev.commercial.itens.filter((_, i) => i !== idx) },
+      };
+    });
+  };
+
+  /** Preenche um item a partir de um carregador do catálogo. */
+  const selecionarCarregador = (idx: number, modelId: string) => {
+    if (!modelId) {
+      alterarItem(idx, { chargerModelId: null });
+      return;
+    }
+    const m = chargerModels.find(x => x.id === modelId);
+    if (!m) return;
+    alterarItem(idx, {
+      chargerModelId: m.id,
+      productName: m.name,
+      power: m.power,
+      unitPrice: m.price,
+      imageUrl: m.image_url,
+      technicalSpecs: {
+        powerSource:   m.power_source,
+        connectors:    m.connectors,
+        connectorType: m.connector_type,
+        communication: m.communication,
+        model:         m.model_name,
+      },
+    });
+  };
+
+  const totalProposta = calcularTotal(formData.commercial.itens);
 
   // ── Handler do preço com máscara BRL ────────────────────────────────────────
 
@@ -364,6 +405,10 @@ function NewProposalPage() {
           title:           `Proposta - ${formData.client.name || 'S/ nome'}`,
           commercial_data: {
             ...formData,
+            // Recalcula price (total), productName, power e technicalSpecs a
+            // partir dos itens. Sem isto os KPIs do dashboard — que leem
+            // commercial.price em 13 lugares — ficariam com o valor errado.
+            commercial: sincronizarEspelhos(formData.commercial),
             metadata: {
               ...formData.metadata,
               emissionDate: todayFormatted(), // garante data atual no momento do save
@@ -581,21 +626,186 @@ function NewProposalPage() {
                     </span>
                   </div>
 
-                  {/* Seleção de modelo de carregador pré-cadastrado */}
-                  <div className="space-y-2 p-5 bg-gradient-to-r from-green-950 to-green-900 rounded-2xl text-white shadow-sm border border-green-800">
-                    <label className="text-xs font-black uppercase text-accent tracking-wider">{t('selectPredetermined')}</label>
-                    <select
-                      onChange={(e) => handleSelectCharger(e.target.value)}
-                      className="w-full px-4 py-3 rounded-xl bg-black/30 border border-white/10 text-white focus:bg-green-950 focus:outline-none focus:ring-2 focus:ring-accent/30 transition-all text-sm font-bold cursor-pointer"
-                    >
-                      <option value="" className="text-gray-400 bg-green-950">{t('chooseCharger')}</option>
-                      {chargerModels.map(m => (
-                        <option key={m.id} value={m.id} className="text-white bg-green-950">
-                          {m.name} ({m.power}) — R$ {m.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-[10px] text-gray-300 font-medium">{t('autoselectHelp')}</p>
+                  {/* ── Produtos da proposta ──────────────────────────────── */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-bold text-gray-700 dark:text-slate-350 uppercase tracking-wider border-l-2 border-primary pl-2">
+                        Produtos da proposta
+                      </h3>
+                      <span className="text-xs font-bold text-gray-400">
+                        {formData.commercial.itens.length} {formData.commercial.itens.length === 1 ? 'item' : 'itens'}
+                      </span>
+                    </div>
+
+                    {errors.itens && (
+                      <p className="text-xs text-red-500 font-semibold">{errors.itens}</p>
+                    )}
+
+                    {formData.commercial.itens.map((item, idx) => (
+                      <div key={idx} className="rounded-2xl border border-gray-200 dark:border-slate-700 overflow-hidden">
+                        <div className="flex items-center gap-3 px-4 py-2.5 bg-gray-50 dark:bg-slate-850 border-b border-gray-100 dark:border-slate-800">
+                          <span className="w-6 h-6 rounded-lg bg-primary/10 dark:bg-accent/10 text-primary dark:text-accent text-xs font-black flex items-center justify-center flex-shrink-0">
+                            {idx + 1}
+                          </span>
+                          <span className="text-sm font-bold text-gray-800 dark:text-slate-200 truncate flex-1">
+                            {item.productName || 'Novo produto'}
+                          </span>
+                          <span className="text-sm font-black text-gray-900 dark:text-white whitespace-nowrap">
+                            R$ {(item.unitPrice * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </span>
+                          {formData.commercial.itens.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removerItem(idx)}
+                              className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors cursor-pointer flex-shrink-0"
+                              title="Remover produto"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="p-4 space-y-4">
+                          <div className="p-3 rounded-xl bg-gradient-to-r from-green-950 to-green-900 border border-green-800">
+                            <label className="text-[10px] font-black uppercase text-accent tracking-wider block mb-1.5">
+                              {t('selectPredetermined')}
+                            </label>
+                            <select
+                              value={item.chargerModelId || ''}
+                              onChange={(e) => selecionarCarregador(idx, e.target.value)}
+                              className="w-full px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-white text-sm font-bold cursor-pointer focus:outline-none focus:ring-2 focus:ring-accent/30"
+                            >
+                              <option value="" className="bg-green-950">{t('chooseCharger')}</option>
+                              {chargerModels.map(m => (
+                                <option key={m.id} value={m.id} className="bg-green-950">
+                                  {m.name} ({m.power}) — R$ {m.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <div className="md:col-span-2">
+                              <Field label={t('productCommercialModel')} required>
+                                <input
+                                  type="text"
+                                  value={item.productName}
+                                  onChange={(e) => alterarItem(idx, { productName: e.target.value })}
+                                  className={inputCls()}
+                                  placeholder="Ex: Eco SuperFast"
+                                  maxLength={80}
+                                />
+                              </Field>
+                            </div>
+
+                            <Field label={t('chargingPower')} required>
+                              <input
+                                type="text"
+                                value={item.power}
+                                onChange={(e) => alterarItem(idx, { power: e.target.value })}
+                                className={inputCls()}
+                                placeholder="Ex: 40kW"
+                                maxLength={20}
+                              />
+                            </Field>
+
+                            <Field label="Quantidade" required>
+                              <input
+                                type="number"
+                                inputMode="numeric"
+                                min={1}
+                                max={999}
+                                value={item.quantity}
+                                onChange={(e) => alterarItem(idx, { quantity: Math.max(1, Math.min(999, parseInt(e.target.value) || 1)) })}
+                                className={inputCls()}
+                              />
+                            </Field>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <Field label={`${t('unitValue')} (R$)`} required>
+                              <div className="relative">
+                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-gray-400">R$</span>
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={item.unitPrice ? formatCurrency(item.unitPrice) : ''}
+                                  onChange={(e) => {
+                                    const digitos = e.target.value.replace(/\D/g, '');
+                                    alterarItem(idx, { unitPrice: digitos ? parseInt(digitos) / 100 : 0 });
+                                  }}
+                                  className={`${inputCls()} pl-10`}
+                                  placeholder="0,00"
+                                />
+                              </div>
+                            </Field>
+
+                            <div className="flex items-end pb-2">
+                              <p className="text-xs text-gray-400 dark:text-slate-500">
+                                Subtotal:{' '}
+                                <strong className="text-gray-700 dark:text-slate-300">
+                                  R$ {(item.unitPrice * item.quantity).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                </strong>
+                              </p>
+                            </div>
+                          </div>
+
+                          <details className="group">
+                            <summary className="text-xs font-bold text-gray-500 dark:text-slate-400 cursor-pointer select-none hover:text-primary dark:hover:text-accent list-none flex items-center gap-1.5">
+                              <ChevronRight size={13} className="group-open:rotate-90 transition-transform" />
+                              Ficha técnica deste produto
+                            </summary>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+                              <Field label={t('powerSource')}>
+                                <input type="text" value={item.technicalSpecs.powerSource}
+                                  onChange={(e) => alterarItem(idx, { technicalSpecs: { ...item.technicalSpecs, powerSource: e.target.value } })}
+                                  className={inputCls()} placeholder="Ex: 3F+N+T" maxLength={40} />
+                              </Field>
+                              <Field label={t('connectors')}>
+                                <input type="number" min={1} max={20} value={item.technicalSpecs.connectors}
+                                  onChange={(e) => alterarItem(idx, { technicalSpecs: { ...item.technicalSpecs, connectors: Math.max(1, parseInt(e.target.value) || 1) } })}
+                                  className={inputCls()} />
+                              </Field>
+                              <Field label={t('connectorType')}>
+                                <input type="text" value={item.technicalSpecs.connectorType}
+                                  onChange={(e) => alterarItem(idx, { technicalSpecs: { ...item.technicalSpecs, connectorType: e.target.value } })}
+                                  className={inputCls()} placeholder="Ex: CCS2" maxLength={40} />
+                              </Field>
+                              <div className="md:col-span-2">
+                                <Field label={t('communication')}>
+                                  <input type="text" value={item.technicalSpecs.communication}
+                                    onChange={(e) => alterarItem(idx, { technicalSpecs: { ...item.technicalSpecs, communication: e.target.value } })}
+                                    className={inputCls()} placeholder="Ex: Wi-Fi/RFID/4G" maxLength={80} />
+                                </Field>
+                              </div>
+                              <Field label={t('chargerModel')}>
+                                <input type="text" value={item.technicalSpecs.model}
+                                  onChange={(e) => alterarItem(idx, { technicalSpecs: { ...item.technicalSpecs, model: e.target.value } })}
+                                  className={inputCls()} placeholder="Ex: Rise Superfast" maxLength={60} />
+                              </Field>
+                            </div>
+                          </details>
+                        </div>
+                      </div>
+                    ))}
+
+                    <div className="flex items-center justify-between gap-4 pt-1">
+                      <button
+                        type="button"
+                        onClick={adicionarItem}
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-dashed border-gray-300 dark:border-slate-600 text-sm font-bold text-gray-600 dark:text-slate-300 hover:border-primary dark:hover:border-accent hover:text-primary dark:hover:text-accent transition-colors cursor-pointer"
+                      >
+                        <Plus size={16} />
+                        Adicionar produto
+                      </button>
+
+                      <div className="text-right">
+                        <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider block">Total da proposta</span>
+                        <span className="text-xl font-black text-gray-900 dark:text-white">
+                          R$ {totalProposta.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
                   {/* ── Informações de venda ──────────────────────────────── */}
@@ -603,54 +813,6 @@ function NewProposalPage() {
                     <h3 className="text-sm font-bold text-gray-700 dark:text-slate-350 uppercase tracking-wider border-l-2 border-primary pl-2">{t('salesInfo')}</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-                      <Field label={t('productCommercialModel')} error={errors.productName} required>
-                        <input
-                          type="text"
-                          value={formData.commercial.productName}
-                          onChange={(e) => {
-                            setFormData(prev => ({ ...prev, commercial: { ...prev.commercial, productName: e.target.value } }));
-                            if (errors.productName) setErrors(prev => ({ ...prev, productName: undefined }));
-                          }}
-                          className={inputCls(!!errors.productName)}
-                          placeholder="Ex: Eco SuperFast"
-                          maxLength={80}
-                        />
-                      </Field>
-
-                      <Field label={t('chargingPower')} error={errors.power} required>
-                        <input
-                          type="text"
-                          value={formData.commercial.power}
-                          onChange={(e) => {
-                            // Aceita números e unidades como "kW", "kVA"
-                            const val = e.target.value.replace(/[^0-9a-zA-ZÀ-ÿ\s.,/+]/g, '');
-                            setFormData(prev => ({ ...prev, commercial: { ...prev.commercial, power: val } }));
-                            if (errors.power) setErrors(prev => ({ ...prev, power: undefined }));
-                          }}
-                          className={inputCls(!!errors.power)}
-                          placeholder="Ex: 40kW"
-                          maxLength={20}
-                        />
-                      </Field>
-
-                      {/* Preço com máscara BRL */}
-                      <Field label={`${t('unitValue')} (R$)`} error={errors.price} required>
-                        <div className="relative">
-                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-gray-400">R$</span>
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            value={priceDisplay}
-                            onChange={(e) => {
-                              handlePriceChange(e.target.value);
-                              if (errors.price) setErrors(prev => ({ ...prev, price: undefined }));
-                            }}
-                            onBlur={handlePriceBlur}
-                            className={`${inputCls(!!errors.price)} pl-10`}
-                            placeholder="0,00"
-                          />
-                        </div>
-                      </Field>
 
                       {/* Parcelamento — somente inteiros de 1 a 10 */}
                       <Field label={t('installments')} error={errors.installments} required>
@@ -797,85 +959,6 @@ function NewProposalPage() {
                     </div>
                   </div>
 
-                  {/* ── Ficha técnica (Página 6) ──────────────────────────── */}
-                  <div className="space-y-4 pt-4 border-t border-gray-50 dark:border-slate-800">
-                    <h3 className="text-sm font-bold text-gray-700 dark:text-slate-350 uppercase tracking-wider border-l-2 border-primary pl-2">{t('techSpecsPage6')}</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-
-                      <Field label={t('powerSource')}>
-                        <input
-                          type="text"
-                          value={formData.commercial.technicalSpecs?.powerSource || ''}
-                          onChange={(e) => {
-                            // Aceita texto técnico com +, letras, números
-                            const val = e.target.value.replace(/[^0-9a-zA-Z+\-/\s]/g, '');
-                            setFormData(prev => ({ ...prev, commercial: { ...prev.commercial, technicalSpecs: { ...prev.commercial.technicalSpecs, powerSource: val } } }));
-                          }}
-                          className={inputCls()}
-                          placeholder="3F+N+T"
-                          maxLength={20}
-                        />
-                      </Field>
-
-                      <Field label={t('connectors')}>
-                        <input
-                          type="number"
-                          inputMode="numeric"
-                          min={1}
-                          max={8}
-                          value={formData.commercial.technicalSpecs?.connectors || 1}
-                          onChange={(e) => {
-                            const val = Math.max(1, Math.min(8, parseInt(e.target.value) || 1));
-                            setFormData(prev => ({ ...prev, commercial: { ...prev.commercial, technicalSpecs: { ...prev.commercial.technicalSpecs, connectors: val } } }));
-                          }}
-                          className={inputCls()}
-                          placeholder="1"
-                        />
-                      </Field>
-
-                      <Field label={t('connectorType')}>
-                        <select
-                          value={formData.commercial.technicalSpecs?.connectorType || ''}
-                          onChange={(e) => setFormData(prev => ({ ...prev, commercial: { ...prev.commercial, technicalSpecs: { ...prev.commercial.technicalSpecs, connectorType: e.target.value } } }))}
-                          className={inputCls()}
-                        >
-                          <option value="">-- Selecione --</option>
-                          <option value="CCS2">CCS2</option>
-                          <option value="CHAdeMO">CHAdeMO</option>
-                          <option value="Tipo 2 (AC)">Tipo 2 (AC)</option>
-                          <option value="Tipo 1 (AC)">Tipo 1 (AC)</option>
-                          <option value="GB/T">GB/T</option>
-                          <option value="CCS2 + CHAdeMO">CCS2 + CHAdeMO</option>
-                          <option value="CCS2 + Tipo 2">CCS2 + Tipo 2</option>
-                        </select>
-                      </Field>
-
-                      <div className="md:col-span-2">
-                        <Field label={t('communication')}>
-                          <input
-                            type="text"
-                            value={formData.commercial.technicalSpecs?.communication || ''}
-                            onChange={(e) => setFormData(prev => ({ ...prev, commercial: { ...prev.commercial, technicalSpecs: { ...prev.commercial.technicalSpecs, communication: e.target.value } } }))}
-                            className={inputCls()}
-                            placeholder="Ex: Bluetooth/Wi-Fi/RFID/4G"
-                            maxLength={80}
-                          />
-                        </Field>
-                      </div>
-
-                      <Field label={t('chargerModel')}>
-                        <input
-                          type="text"
-                          value={formData.commercial.technicalSpecs?.model || ''}
-                          onChange={(e) => setFormData(prev => ({ ...prev, commercial: { ...prev.commercial, technicalSpecs: { ...prev.commercial.technicalSpecs, model: e.target.value } } }))}
-                          className={inputCls()}
-                          placeholder="Ex: Rise Superfast"
-                          maxLength={60}
-                        />
-                      </Field>
-
-                    </div>
-                  </div>
                 </div>
               )}
 
