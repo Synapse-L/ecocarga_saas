@@ -73,7 +73,7 @@ import {
 
 type ReorderPage = {
   id: string;
-  type: 'template' | 'saas-cover' | 'saas-page6' | 'static-page7';
+  type: 'template' | 'saas-cover' | 'saas-page6';
   label: string;
   index: number | null;
 };
@@ -239,7 +239,7 @@ export default function Dashboard() {
           await PDFService.viewOnlyPage6('proposal-page-6');
         } else {
           const pageCount = await PDFService.getTemplatePageCount(templateUrl);
-          const pageOrder: Array<{ type: 'template' | 'saas-cover' | 'saas-page6' | 'static-page7'; index?: number }> = [];
+          const pageOrder: Array<{ type: 'template' | 'saas-cover' | 'saas-page6'; index?: number }> = [];
 
           pageOrder.push({ type: 'saas-cover' as const });
 
@@ -248,8 +248,6 @@ export default function Dashboard() {
           }
 
           pageOrder.push({ type: 'saas-page6' as const });
-          // Mesma página 7 fixa do download, para o preview bater com o arquivo final
-          pageOrder.push({ type: 'static-page7' as const });
 
           for (let i = 6; i < pageCount; i++) {
             pageOrder.push({ type: 'template' as const, index: i });
@@ -603,15 +601,6 @@ export default function Dashboard() {
         id: 'saas-page6',
         type: 'saas-page6',
         label: `${t('techSpecsPage6')} (SaaS)`,
-        index: null
-      });
-
-      // Página 7 fixa (PDF estático em /public), sempre logo após a página 6.
-      // Fica na lista do modal, então dá para reordenar ou remover antes de baixar.
-      initialPages.push({
-        id: 'static-page7',
-        type: 'static-page7',
-        label: 'Página 7 (fixa)',
         index: null
       });
 
@@ -1586,9 +1575,7 @@ export default function Dashboard() {
                 ) : (
                   <div className="space-y-2">
                     {reorderPages.map((page, index) => {
-                      // A página 7 fixa também é conteúdo do SaaS (não vem do template),
-                      // então recebe o mesmo destaque visual das outras páginas geradas.
-                      const isSaas = page.type === 'saas-cover' || page.type === 'saas-page6' || page.type === 'static-page7';
+                      const isSaas = page.type === 'saas-cover' || page.type === 'saas-page6';
                       return (
                         <motion.div
                           key={page.id}
