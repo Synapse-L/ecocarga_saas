@@ -241,132 +241,30 @@ export class PDFService {
   }
 
   /**
-   * Replaces cover page (index 0) and page 6 (index 5) of a base PDF.
-   * Forces the new pages to have the exact same size as the other pages.
-   */
-  static async replaceCoverAndPage6(
-    basePdfArrayBuffer: ArrayBuffer,
-    coverImageBytes: Uint8Array,
-    page6ImageBytes: Uint8Array
-  ): Promise<Uint8Array> {
-    const baseDoc = await PDFDocument.load(basePdfArrayBuffer);
-    
-    // Get the page size of the first page of the template to match it exactly
-    const pages = baseDoc.getPages();
-    const firstPage = pages[0];
-    const { width, height } = firstPage.getSize();
-    
-    console.log(`Template page size detected for cover/page6 replacement: ${width}x${height}`);
-
-    // Embed both dynamic JPEG images
-    const jpgCover = await baseDoc.embedPng(coverImageBytes);
-    const jpgPage6 = await baseDoc.embedPng(page6ImageBytes);
-
-    const pageCount = baseDoc.getPageCount();
-
-    // 1. Replace Cover Page (index 0)
-    if (pageCount >= 1) {
-      baseDoc.removePage(0);
-      const newCoverPage = baseDoc.insertPage(0, [width, height]);
-      newCoverPage.drawImage(jpgCover, {
-        x: 0,
-        y: 0,
-        width: width,
-        height: height
-      });
-      console.log('Replaced cover page (index 0).');
-    }
-
-    // 2. Replace Page 6 (index 5)
-    if (baseDoc.getPageCount() >= 6) {
-      baseDoc.removePage(5);
-      const newPage6 = baseDoc.insertPage(5, [width, height]);
-      newPage6.drawImage(jpgPage6, {
-        x: 0,
-        y: 0,
-        width: width,
-        height: height
-      });
-      console.log('Replaced page 6 (index 5).');
-    } else {
-      // Append blank pages if the template is shorter, then add page 6
-      while (baseDoc.getPageCount() < 5) {
-        baseDoc.addPage([width, height]);
-      }
-      const newPage6 = baseDoc.addPage([width, height]);
-      newPage6.drawImage(jpgPage6, {
-        x: 0,
-        y: 0,
-        width: width,
-        height: height,
-      });
-      console.log('Appended new page 6.');
-    }
-
-    return await baseDoc.save();
-  }
-
-  /**
-   * Full flow: Capture cover & page 6 -> Replace in template -> Download
-   */
-  static async generateAndDownload(
-    templateUrl: string,
-    coverElementId: string,
-    page6ElementId: string,
-    fileName: string
-  ): Promise<void> {
-    try {
-      // 1. Fetch template
-      const templateResponse = await fetch(templateUrl);
-      const templateBuffer = await templateResponse.arrayBuffer();
-
-      // 2. Capture dynamic cover (page 1) as JPEG bytes
-      const coverImageBytes = await this.captureElementAsPngBytes(coverElementId);
-
-      // 3. Capture dynamic page 6 as JPEG bytes
-      const page6ImageBytes = await this.captureElementAsPngBytes(page6ElementId);
-
-      // 4. Merge and enforce matching page dimensions
-      const finalPdfBytes = await this.replaceCoverAndPage6(templateBuffer, coverImageBytes, page6ImageBytes);
-
-      // 5. Download
-      const blob = new Blob([new Uint8Array(finalPdfBytes)], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${fileName}.pdf`;
-      link.click();
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Error generating PDF:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Generates and downloads a combined PDF containing ONLY cover and page 6 (for testing without a template).
+   * Baixa uma proposta com apenas capa + página de valores, usada quando não há
+   * nenhum template cadastrado no banco.
+   *
+   * Antes capturava as duas páginas do DOM e as colava em folhas de
+   * 2480x3508 PONTOS (87 x 124 cm), o mesmo defeito que derrubava a resolução
+   * para ~69 DPI no fluxo principal. Agora a capa é capturada em A4 e a página
+   * de valores é desenhada com pdf-lib.
    */
   static async downloadTestProposal(
     coverElementId: string,
-    page6ElementId: string,
+    quoteData: DadosOrcamento,
     fileName: string
   ): Promise<void> {
     try {
-      // 1. Capture cover and page 6
       const coverImageBytes = await this.captureElementAsPngBytes(coverElementId);
-      const page6ImageBytes = await this.captureElementAsPngBytes(page6ElementId);
-      
-      // 2. Create high-res PDF with two pages (2480x3508 px each)
+
       const finalDoc = await PDFDocument.create();
-      
-      const coverPage = finalDoc.addPage([2480, 3508]);
-      const jpgCover = await finalDoc.embedPng(coverImageBytes);
-      coverPage.drawImage(jpgCover, { x: 0, y: 0, width: 2480, height: 3508 });
-      
-      const page6Page = finalDoc.addPage([2480, 3508]);
-      const jpgPage6 = await finalDoc.embedPng(page6ImageBytes);
-      page6Page.drawImage(jpgPage6, { x: 0, y: 0, width: 2480, height: 3508 });
-      
+
+      const coverPage = finalDoc.addPage([595.27, 841.89]);
+      const imgCover = await finalDoc.embedPng(coverImageBytes);
+      coverPage.drawImage(imgCover, { x: 0, y: 0, width: 595.27, height: 841.89 });
+
+      await drawQuotePage(finalDoc, quoteData);
+
       const finalPdfBytes = await finalDoc.save();
 
       // 3. Download
@@ -390,7 +288,10 @@ export class PDFService {
     templateUrl: string | null,
     coverElementId: string,
     page6ElementId: string,
-    pageOrder: Array<{ type: 'template' | 'saas-cover' | 'saas-page6'; index?: number }>
+    pageOrder: Array<{ type: 'template' | 'saas-cover' | 'saas-page6'; index?: number }>,
+    /** Mesma finalidade que em generateCustomOrderedPdf: quando presente, a
+     *  página de valores é desenhada nativamente em vez de capturada do DOM. */
+    quoteData?: DadosOrcamento | null
   ): Promise<void> {
     try {
       // Capture both if needed in the order
@@ -400,7 +301,7 @@ export class PDFService {
       if (pageOrder.some(item => item.type === 'saas-cover')) {
         coverImageBytes = await this.captureElementAsPngBytes(coverElementId);
       }
-      if (pageOrder.some(item => item.type === 'saas-page6')) {
+      if (!quoteData && pageOrder.some(item => item.type === 'saas-page6')) {
         page6ImageBytes = await this.captureElementAsPngBytes(page6ElementId);
       }
 
@@ -414,7 +315,9 @@ export class PDFService {
           const jpgImage = await finalDoc.embedPng(coverImageBytes);
           page.drawImage(jpgImage, { x: 0, y: 0, width: 595.27, height: 841.89 });
         }
-        if (page6ImageBytes) {
+        if (quoteData) {
+          await drawQuotePage(finalDoc, quoteData);
+        } else if (page6ImageBytes) {
           const page = finalDoc.addPage([595.27, 841.89]);
           const jpgImage = await finalDoc.embedPng(page6ImageBytes);
           page.drawImage(jpgImage, { x: 0, y: 0, width: 595.27, height: 841.89 });
@@ -458,6 +361,8 @@ export class PDFService {
           if (item.type === 'saas-cover' && saasCoverDoc) {
             const [copiedPage] = await finalDoc.copyPages(saasCoverDoc, [0]);
             finalDoc.addPage(copiedPage);
+          } else if (item.type === 'saas-page6' && quoteData) {
+            await drawQuotePage(finalDoc, quoteData);
           } else if (item.type === 'saas-page6' && saasPage6Doc) {
             const [copiedPage] = await finalDoc.copyPages(saasPage6Doc, [0]);
             finalDoc.addPage(copiedPage);
@@ -487,40 +392,23 @@ export class PDFService {
   }
 
   /**
-   * Generates only page 6 and opens it in a new browser tab.
+   * Abre só a página de valores numa aba nova — usada quando a proposta não
+   * tem template associado.
+   *
+   * Substitui o antigo viewOnlyPage6, que capturava o componente de ficha
+   * técnica do DOM. Aquele componente foi removido, então a captura passou a
+   * falhar com "Element not found"; agora a página é desenhada com pdf-lib,
+   * igual ao fluxo de download.
    */
-  static async viewOnlyPage6(elementId: string): Promise<void> {
+  static async viewQuoteOnly(quoteData: DadosOrcamento): Promise<void> {
     try {
-      const element = document.getElementById(elementId);
-      if (!element) throw new Error('Element not found');
-
-      const canvas = await html2canvas(element, {
-        scale: 3,
-        useCORS: true,
-        logging: false,
-        onclone: prepareCloneForCapture,
-      });
-
-      // PNG e A4, pelos mesmos motivos do fluxo de download:
-      // JPEG deixa quadriculado nos gradientes escuros, e o formato antigo
-      // [2480, 3508] eram PONTOS — uma folha de 87 x 124 cm que jogava a
-      // imagem para ~69 DPI. Em A4 a mesma captura rende 288 DPI.
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'pt',
-        format: 'a4',
-      });
-
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
-
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      const blob = pdf.output('blob');
-      const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
+      const doc = await PDFDocument.create();
+      await drawQuotePage(doc, quoteData);
+      const bytes = await doc.save();
+      const blob = new Blob([new Uint8Array(bytes)], { type: 'application/pdf' });
+      window.open(URL.createObjectURL(blob), '_blank');
     } catch (error) {
-      console.error('Error viewing standalone page 6:', error);
+      console.error('Error viewing standalone quote page:', error);
       throw error;
     }
   }

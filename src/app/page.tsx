@@ -235,8 +235,15 @@ export default function Dashboard() {
           }
         }
 
+        // A página de valores é desenhada nativamente; o componente que antes
+        // era capturado do DOM não existe mais.
+        const quoteData = await montarDadosOrcamento(
+          proposal.commercial_data,
+          profile?.full_name || ''
+        );
+
         if (!templateUrl) {
-          await PDFService.viewOnlyPage6('proposal-page-6');
+          await PDFService.viewQuoteOnly(quoteData);
         } else {
           const pageCount = await PDFService.getTemplatePageCount(templateUrl);
           const pageOrder: Array<{ type: 'template' | 'saas-cover' | 'saas-page6'; index?: number }> = [];
@@ -257,7 +264,8 @@ export default function Dashboard() {
             templateUrl,
             'proposal-cover',
             'proposal-page-6',
-            pageOrder
+            pageOrder,
+            quoteData
           );
         }
       } catch (err) {
@@ -550,12 +558,12 @@ export default function Dashboard() {
       }
 
       if (!templateUrl) {
-        // Standalone cover + page 6 download fallback if no templates exist in DB
+        // Sem template no banco: gera só capa + página de valores
         setTimeout(async () => {
           try {
             await PDFService.downloadTestProposal(
               'proposal-cover',
-              'proposal-page-6',
+              await montarDadosOrcamento(proposal.commercial_data, profile?.full_name || ''),
               `Proposta_TESTE_Completa_${proposal.client?.name || proposal.id}`
             );
           } catch (err) {
