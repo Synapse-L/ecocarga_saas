@@ -68,19 +68,53 @@ export type DadosOrcamento = {
 const brl = (v: number) =>
   v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-/** Baixa a imagem do produto. Falha nunca derruba a proposta — só fica sem foto. */
-const baixarImagem = async (url?: string) => {
+type FotoProduto = { bytes: Uint8Array; tipo: 'png' | 'jpg' } | null;
+
+/**
+ * Cache das fotos por URL. Sem ele a mesma imagem era rebaixada a cada
+ * visualização e a cada download, mesmo quando o vendedor abre a mesma proposta
+ * várias vezes seguidas.
+ */
+const cacheFotos = new Map<string, FotoProduto>();
+
+const LIMITE_IMAGEM_MS = 15000;
+
+/**
+ * Baixa a foto do produto. Falha nunca derruba a proposta — só fica sem foto.
+ *
+ * O tempo limite é essencial: a foto é opcional, mas sem AbortController um
+ * armazenamento lento ou inacessível travava a geração inteira do PDF, deixando
+ * a interface em carregamento infinito.
+ */
+const baixarImagem = async (url?: string): Promise<FotoProduto> => {
   if (!url) return null;
+  if (cacheFotos.has(url)) return cacheFotos.get(url)!;
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), LIMITE_IMAGEM_MS);
+  let resultado: FotoProduto = null;
   try {
-    const r = await fetch(url);
-    if (!r.ok) return null;
-    const bytes = new Uint8Array(await r.arrayBuffer());
-    const tipo: 'png' | 'jpg' =
-      bytes[0] === 0xff && bytes[1] === 0xd8 ? 'jpg' : 'png';
-    return { bytes, tipo };
-  } catch {
-    return null;
+    const r = await fetch(url, { signal: ctrl.signal });
+    if (r.ok) {
+      const bytes = new Uint8Array(await r.arrayBuffer());
+      const tipo: 'png' | 'jpg' = bytes[0] === 0xff && bytes[1] === 0xd8 ? 'jpg' : 'png';
+      resultado = { bytes, tipo };
+    } else {
+      console.warn(`Foto do produto indisponível (HTTP ${r.status}):`, url);
+    }
+  } catch (e: any) {
+    console.warn(
+      e?.name === 'AbortError'
+        ? `Foto do produto demorou mais de ${LIMITE_IMAGEM_MS / 1000}s; seguindo sem ela.`
+        : 'Falha ao baixar a foto do produto; seguindo sem ela.',
+      url
+    );
+  } finally {
+    clearTimeout(timer);
   }
+
+  cacheFotos.set(url, resultado);
+  return resultado;
 };
 
 /**

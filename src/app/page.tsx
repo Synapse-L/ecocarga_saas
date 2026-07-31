@@ -268,9 +268,14 @@ export default function Dashboard() {
             quoteData
           );
         }
-      } catch (err) {
+      } catch (err: unknown) {
         console.error(err);
-        alert('Erro ao visualizar PDF');
+        const msg = err instanceof Error ? err.message : String(err);
+        alert(
+          /demorou mais de/.test(msg)
+            ? `${msg}\n\nIsso costuma ser o modelo de proposta (template) grande ou uma conexão lenta. Tente de novo.`
+            : `Erro ao visualizar PDF.\n\n${msg}`
+        );
       } finally {
         setViewingId(null);
       }
@@ -659,9 +664,14 @@ export default function Dashboard() {
           `Proposta_${selectedProposal.client?.name || selectedProposal.id}`,
           quoteData
         );
-      } catch (err) {
+      } catch (err: unknown) {
         console.error(err);
-        alert('Erro ao gerar PDF com a ordem personalizada');
+        const msg = err instanceof Error ? err.message : String(err);
+        alert(
+          /demorou mais de/.test(msg)
+            ? `${msg}\n\nIsso costuma ser o modelo de proposta (template) grande ou uma conexão lenta. Tente de novo.`
+            : `Erro ao gerar o PDF.\n\n${msg}`
+        );
       } finally {
         setDownloadingId(null);
         setSelectedProposal(null);

@@ -46,6 +46,47 @@ const prepareCloneForCapture = (clonedDoc: Document) => {
   });
 };
 
+const LIMITE_REDE_MS = 30000;
+
+/**
+ * fetch com tempo limite. Sem isto, uma requisição que trava deixa a interface
+ * em carregamento infinito, porque o `finally` que desliga o spinner nunca roda.
+ */
+async function baixarComLimite(url: string, ms = LIMITE_REDE_MS): Promise<ArrayBuffer> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const r = await fetch(url, { signal: ctrl.signal });
+    if (!r.ok) throw new Error(`Falha ao baixar (HTTP ${r.status})`);
+    return await r.arrayBuffer();
+  } catch (e: any) {
+    if (e?.name === 'AbortError') {
+      throw new Error(`O arquivo demorou mais de ${ms / 1000}s para responder.`);
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Cache do template por URL.
+ *
+ * O mesmo arquivo era baixado DUAS vezes em cada operação: uma em
+ * getTemplatePageCount, para contar as páginas, e outra ao montar o PDF. Em
+ * templates de alguns MB isso dobrava a espera — e era pior em contas cujo
+ * template é maior. Agora a primeira leitura serve as duas.
+ */
+const cacheTemplate = new Map<string, ArrayBuffer>();
+
+async function carregarTemplate(url: string): Promise<ArrayBuffer> {
+  const emCache = cacheTemplate.get(url);
+  if (emCache) return emCache;
+  const buf = await baixarComLimite(url);
+  cacheTemplate.set(url, buf);
+  return buf;
+}
+
 /**
  * Service to handle PDF manipulation.
  */
@@ -91,8 +132,7 @@ export class PDFService {
    */
   static async getTemplatePageCount(templateUrl: string): Promise<number> {
     try {
-      const response = await fetch(templateUrl);
-      const buffer = await response.arrayBuffer();
+      const buffer = await carregarTemplate(templateUrl);
       const doc = await PDFDocument.load(buffer, { updateMetadata: false });
       return doc.getPageCount();
     } catch (error) {
@@ -150,10 +190,9 @@ export class PDFService {
         }
         finalPdfBytes = await finalDoc.save();
       } else {
-        // 2. Fetch template PDF
-        const templateResponse = await fetch(templateUrl);
-        const templateBuffer = await templateResponse.arrayBuffer();
-        
+        // 2. Template: reaproveita o download feito por getTemplatePageCount
+        const templateBuffer = await carregarTemplate(templateUrl);
+
         const baseDoc = await PDFDocument.load(templateBuffer);
         const firstPage = baseDoc.getPages()[0];
         const { width: tplW, height: tplH } = firstPage.getSize();
@@ -324,8 +363,7 @@ export class PDFService {
         }
         finalPdfBytes = await finalDoc.save();
       } else {
-        const templateResponse = await fetch(templateUrl);
-        const templateBuffer = await templateResponse.arrayBuffer();
+        const templateBuffer = await carregarTemplate(templateUrl);
         const baseDoc = await PDFDocument.load(templateBuffer);
         const firstPage = baseDoc.getPages()[0];
         const { width: tplW, height: tplH } = firstPage.getSize();
