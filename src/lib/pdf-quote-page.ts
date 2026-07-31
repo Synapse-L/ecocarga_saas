@@ -43,7 +43,8 @@ const COR = {
 
 export type ItemOrcamento = {
   descricao: string;
-  detalhe: string;
+  /** Uma especificação por posição — cada uma vira uma linha própria na tabela. */
+  detalhes: string[];
   quantidade: number;
   precoUnitario: number;
   imagemBytes?: Uint8Array | null;
@@ -96,16 +97,20 @@ export async function montarDadosOrcamento(
     itensBrutos.map(async (i) => {
       const img = await baixarImagem(i.imageUrl);
       const s = i.technicalSpecs || ({} as any);
-      const detalhe = [
-        s.powerSource,
-        s.connectors ? `${s.connectors}x ${s.connectorType || 'conector'}` : null,
-        s.communication,
-        s.model,
-      ].filter(Boolean).join(' · ');
+      // Uma especificação por linha, com rótulo. Antes iam todas concatenadas
+      // numa linha só, o que espremia a coluna de descrição e empurrava as
+      // colunas de preço uma sobre a outra.
+      const detalhes = [
+        s.powerSource   ? `Fonte de energia: ${s.powerSource}` : null,
+        s.connectors    ? `Conectores: ${s.connectors}` : null,
+        s.connectorType ? `Tipo do conector: ${s.connectorType}` : null,
+        s.communication ? `Comunicação: ${s.communication}` : null,
+        s.model         ? `Marca/Modelo: ${s.model}` : null,
+      ].filter(Boolean) as string[];
 
       return {
         descricao: [i.productName, i.power].filter(Boolean).join(' — '),
-        detalhe,
+        detalhes,
         quantidade: Number(i.quantity) || 1,
         precoUnitario: Number(i.unitPrice) || 0,
         imagemBytes: img?.bytes ?? null,
@@ -239,33 +244,47 @@ export async function drawQuotePage(doc: PDFDocument, d: DadosOrcamento): Promis
   y -= 16;
   txt('PRODUTOS', MARGEM, y, { size: 7.5, font: neg, cor: COR.suave });
 
-  // Colunas: #, foto, descrição, qtd, preço un., total
+  // ── Colunas ───────────────────────────────────────────────────────────────
+  // Definidas pela BORDA DIREITA, porque os três números são alinhados à
+  // direita. A versão anterior deixava só 32 pt entre as bordas de "preço un."
+  // e "total", mas um valor como 171.626,36 ocupa ~44 pt em Helvetica 8 — daí
+  // a sobreposição. Agora cada coluna tem largura própria e folga explícita.
+  const GAP = 10;
+  const W_TOTAL = 62;
+  const W_UNIT = 62;
+  const W_QTD = 26;
+
+  const dirTotal = MARGEM + LARGURA;
+  const dirUnit  = dirTotal - W_TOTAL - GAP;
+  const dirQtd   = dirUnit  - W_UNIT  - GAP;
+
   const cx = {
     num: MARGEM + 2,
     foto: MARGEM + 16,
-    desc: MARGEM + 54,
-    qtd: MARGEM + LARGURA - 150,
-    unit: MARGEM + LARGURA - 78,
-    total: MARGEM + LARGURA - 2,
+    desc: MARGEM + 56,
   };
-  const larguraDesc = cx.qtd - cx.desc - 10;
+  // A descrição termina onde a coluna de quantidade começa.
+  const larguraDesc = (dirQtd - W_QTD) - cx.desc - GAP;
 
   y -= 6;
   page.drawLine({ start: { x: MARGEM, y }, end: { x: MARGEM + LARGURA, y }, thickness: 0.7, color: COR.linha });
   y -= 10;
   txt('#', cx.num, y, { size: 7, cor: COR.suave });
   txt('Descrição', cx.desc, y, { size: 7, cor: COR.suave });
-  txt('Qtd.', cx.qtd, y, { size: 7, cor: COR.suave });
-  txt('Preço un.', cx.unit + 44, y, { size: 7, cor: COR.suave, alinhar: 'dir' });
-  txt('Total', cx.total, y, { size: 7, cor: COR.suave, alinhar: 'dir' });
+  txt('Qtd.', dirQtd, y, { size: 7, cor: COR.suave, alinhar: 'dir' });
+  txt('Preço un.', dirUnit, y, { size: 7, cor: COR.suave, alinhar: 'dir' });
+  txt('Total', dirTotal, y, { size: 7, cor: COR.suave, alinhar: 'dir' });
   y -= 5;
   page.drawLine({ start: { x: MARGEM, y }, end: { x: MARGEM + LARGURA, y }, thickness: 0.7, color: COR.linha });
 
-  // Modo adaptativo: poucos itens ganham foto maior e mais respiro.
+  // Altura da linha acompanha a quantidade de especificações, já que cada uma
+  // ocupa uma linha própria. Com poucos itens a foto é maior.
   const compacto = d.itens.length > 2;
-  const hLinha = compacto ? 40 : 62;
-  const fotoW = compacto ? 30 : 40;
-  const fotoH = compacto ? 34 : 54;
+  const H_ESPEC = compacto ? 9 : 10;      // altura de cada linha de especificação
+  const fotoW = compacto ? 34 : 44;
+  const maxEspecs = Math.max(1, ...d.itens.map(i => i.detalhes.length));
+  const hLinha = 16 + maxEspecs * H_ESPEC + 8;
+  const fotoH = Math.min(hLinha - 12, compacto ? 46 : 62);
 
   let totalGeral = 0;
   let totalQtd = 0;
@@ -300,11 +319,17 @@ export async function drawQuotePage(doc: PDFDocument, d: DadosOrcamento): Promis
     }
 
     txt(it.descricao, cx.desc, topo - 12, { size: 8.5, font: neg, maxW: larguraDesc });
-    txt(it.detalhe, cx.desc, topo - 22, { size: 7, cor: COR.suave, maxW: larguraDesc });
 
-    txt(String(it.quantidade), cx.qtd + 8, topo - 12, { size: 8, alinhar: 'dir' });
-    txt(brl(it.precoUnitario), cx.unit + 44, topo - 12, { size: 8, alinhar: 'dir' });
-    txt(brl(subtotal), cx.total, topo - 12, { size: 8, font: neg, alinhar: 'dir' });
+    // Uma especificação por linha, com espaçamento uniforme.
+    let ey = topo - 12 - H_ESPEC - 2;
+    for (const esp of it.detalhes) {
+      txt(esp, cx.desc, ey, { size: 7, cor: COR.suave, maxW: larguraDesc });
+      ey -= H_ESPEC;
+    }
+
+    txt(String(it.quantidade), dirQtd, topo - 12, { size: 8, alinhar: 'dir' });
+    txt(brl(it.precoUnitario), dirUnit, topo - 12, { size: 8, alinhar: 'dir' });
+    txt(brl(subtotal), dirTotal, topo - 12, { size: 8, font: neg, alinhar: 'dir' });
 
     const ultimo = i === d.itens.length - 1;
     page.drawLine({
