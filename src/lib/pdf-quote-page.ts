@@ -15,11 +15,12 @@ import { ProposalData, lerItens } from '@/types/proposal';
  */
 
 // ─── Identificação do emitente ────────────────────────────────────────────────
-// TODO confirmar com o cliente: razão social exata e número do logradouro.
+// Dados confirmados pelo cliente: o cabeçalho usa o nome fantasia, não a razão
+// social, e o endereço não tem numeração — daí o "S/N".
 export const EMITENTE = {
   nome: 'ECOCARGA',
   cnpj: '55.412.542/0001-63',
-  endereco: 'R. Francisca Maria de Abrantes — Estação, Sousa/PB',
+  endereco: 'R. Francisca Maria de Abrantes, S/N — Estação, Sousa/PB',
   cep: '58807-305',
   telefone: '(11) 91283-1823',
   email: 'suporte@ecocarga.com.br',
