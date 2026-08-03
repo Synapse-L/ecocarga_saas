@@ -7,6 +7,30 @@ import { useRouter } from 'next/navigation';
 import { Mail, Lock, User, Loader2, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 
+/**
+ * O Supabase devolve as mensagens de erro em inglês. Traduz as mais comuns no
+ * cadastro; o resto passa como veio, para não esconder informação de diagnóstico.
+ */
+function traduzirErroCadastro(msg: string): string {
+  const m = msg.toLowerCase();
+  if (m.includes('already registered') || m.includes('already been registered')) {
+    return 'Este e-mail já está cadastrado. Faça login ou use "Esqueceu a senha?".';
+  }
+  if (m.includes('password') && m.includes('6 characters')) {
+    return 'A senha precisa ter pelo menos 6 caracteres.';
+  }
+  if (m.includes('invalid email') || m.includes('unable to validate email')) {
+    return 'E-mail inválido. Confira se digitou corretamente.';
+  }
+  if (m.includes('rate limit') || m.includes('too many requests')) {
+    return 'Muitas tentativas seguidas. Aguarde alguns minutos e tente de novo.';
+  }
+  if (m.includes('failed to fetch')) {
+    return 'Sem conexão com o servidor. Verifique sua internet e tente de novo.';
+  }
+  return msg || 'Erro ao criar conta';
+}
+
 export default function SignupPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -21,7 +45,7 @@ export default function SignupPage() {
     setError(null);
 
     try {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -32,11 +56,22 @@ export default function SignupPage() {
       });
 
       if (error) throw error;
-      
-      // Successfully signed up
+
+      // E-mail já cadastrado NÃO vem como erro.
+      // Com a confirmação por e-mail ativada, o Supabase responde sucesso de
+      // propósito, para que ninguém consiga descobrir quais e-mails existem na
+      // base testando um a um. O único indício é `identities` vir vazio.
+      // Numa ferramenta interna de equipe, avisar é mais útil que esconder —
+      // sem isso o vendedor acha que criou a conta e não consegue entrar.
+      if (data.user && (data.user.identities?.length ?? 0) === 0) {
+        setError('Este e-mail já está cadastrado. Faça login ou use "Esqueceu a senha?".');
+        return;
+      }
+
       router.push('/login?message=Verifique seu e-mail para confirmar a conta');
-    } catch (err: any) {
-      setError(err.message || 'Erro ao criar conta');
+    } catch (err: unknown) {
+      const bruto = err instanceof Error ? err.message : String(err);
+      setError(traduzirErroCadastro(bruto));
     } finally {
       setLoading(false);
     }
