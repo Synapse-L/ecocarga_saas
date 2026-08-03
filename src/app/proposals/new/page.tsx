@@ -20,6 +20,7 @@ import {
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { gerarOrcamentoBlob } from '@/lib/pdf-quote-page';
+import { gravarItensDaProposta } from '@/lib/proposal-items';
 import { ProposalCover } from '@/components/ProposalCover';
 import {
   ProposalData, ProposalFormData, ItemProposta, criarItemVazio, calcularTotal, sincronizarEspelhos,
@@ -426,7 +427,12 @@ function NewProposalPage() {
       clientId = client?.id;
 
       // 2. Salvar proposta com data de emissão atual
-      const { error: propError } = await supabase
+      // Recalcula price (total), productName, power e technicalSpecs a partir
+      // dos itens. Sem isto os KPIs do dashboard — que leem commercial.price em
+      // 13 lugares — ficariam com o valor errado.
+      const commercial = sincronizarEspelhos(formData.commercial);
+
+      const { data: proposta, error: propError } = await supabase
         .from('proposals')
         .insert({
           user_id:         user.id,
@@ -435,21 +441,30 @@ function NewProposalPage() {
           title:           `Proposta - ${formData.client.name || 'S/ nome'}`,
           commercial_data: {
             ...formData,
-            // Recalcula price (total), productName, power e technicalSpecs a
-            // partir dos itens. Sem isto os KPIs do dashboard — que leem
-            // commercial.price em 13 lugares — ficariam com o valor errado.
-            commercial: sincronizarEspelhos(formData.commercial),
+            commercial,
             metadata: {
               ...formData.metadata,
               emissionDate: todayFormatted(), // garante data atual no momento do save
             },
           },
           status: 'Rascunho',
-        });
+        })
+        .select('id')
+        .single();
 
       if (propError) throw propError;
 
+      // 3. Espelhar os produtos em proposal_items, que é o que alimenta a
+      // análise de vendas por carregador. A proposta já está salva: se isto
+      // falhar, avisa e segue, em vez de fazer parecer que o trabalho se perdeu.
+      const itensOk = proposta?.id
+        ? await gravarItensDaProposta(proposta.id, user.id, commercial)
+        : false;
+
       toast('Proposta criada com sucesso! ✅', 'success');
+      if (!itensOk) {
+        toast('A proposta foi salva, mas não entrou na análise de vendas.', 'error');
+      }
       router.push('/');
     } catch (err: any) {
       console.error(err);

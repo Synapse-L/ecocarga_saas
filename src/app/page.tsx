@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { 
   FileText, 
   Plus, 
@@ -42,6 +42,7 @@ import { montarDadosOrcamento } from '@/lib/pdf-quote-page';
 import { ProposalCover } from '@/components/ProposalCover';
 import { useApp } from '@/context/AppContext';
 import { getDashboardStats, DashboardProposal } from '@/lib/dashboard-data';
+import { buscarItensVendidos, gravarItensDaProposta, ItemVendido } from '@/lib/proposal-items';
 import { useToast } from '@/components/Toast';
 import { OnboardingTour, useOnboarding } from '@/components/OnboardingTour';
 import AppSidebar from '@/components/AppSidebar';
@@ -90,6 +91,12 @@ export default function Dashboard() {
   
   // Dashboard evolved stats state
   const [stats, setStats] = useState<any>(null);
+
+  // Itens vendidos (proposal_items), fonte do ranking de carregadores.
+  // Num ref, e não em estado: os recálculos locais do kanban rodam dentro de
+  // callbacks e precisam do valor de agora, não do valor da renderização em que
+  // o callback nasceu.
+  const itensVendidosRef = useRef<ItemVendido[]>([]);
 
   // Table filtering, sorting, pagination states
   const [statusFilter, setStatusFilter] = useState<string>('All');
@@ -186,8 +193,12 @@ export default function Dashboard() {
       const realData = proposalData || [];
       setProposals(realData);
 
+      // Itens vendidos, para o ranking de carregadores. Vem junto com as
+      // propostas para o dashboard inteiro refletir o mesmo instante.
+      itensVendidosRef.current = await buscarItensVendidos(user.id);
+
       // Calculate commercial intelligence stats
-      const computed = await getDashboardStats(realData, user.id);
+      const computed = await getDashboardStats(realData, user.id, false, itensVendidosRef.current);
       setStats(computed);
       if (typeof window !== 'undefined') {
         sessionStorage.setItem('dashboardStats', JSON.stringify(computed));
@@ -287,7 +298,7 @@ export default function Dashboard() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { error } = await supabase
+      const { data: copia, error } = await supabase
         .from('proposals')
         .insert({
           user_id: user.id,
@@ -296,9 +307,19 @@ export default function Dashboard() {
           title: `${proposal.title} (Cópia)`,
           commercial_data: proposal.commercial_data,
           status: 'Rascunho'
-        });
+        })
+        .select('id')
+        .single();
 
       if (error) throw error;
+
+      // A cópia é uma proposta como qualquer outra e precisa dos próprios itens.
+      // Sem isto ela sumiria da análise de vendas, e o ranking de carregadores
+      // ficaria menor que a realidade sem nada indicar o porquê.
+      if (copia?.id) {
+        await gravarItensDaProposta(copia.id, user.id, proposal.commercial_data?.commercial);
+      }
+
       fetchDashboardData();
     } catch (err) {
       console.error('Erro ao duplicar proposta:', err);
@@ -332,7 +353,7 @@ export default function Dashboard() {
         }
       }
 
-      const computed = await getDashboardStats(updatedProposals, userId || undefined, true);
+      const computed = await getDashboardStats(updatedProposals, userId || undefined, true, itensVendidosRef.current);
       if (stats?.insights) {
         computed.insights = stats.insights;
       }
@@ -427,7 +448,7 @@ export default function Dashboard() {
       } : prev);
 
       // Update UI and stats for mocks immediately
-      const computed = await getDashboardStats(proposals, userId || undefined, true);
+      const computed = await getDashboardStats(proposals, userId || undefined, true, itensVendidosRef.current);
       if (stats?.insights) {
         computed.insights = stats.insights;
       }
@@ -456,7 +477,7 @@ export default function Dashboard() {
     } : prev);
 
     // Recalculate and update stats immediately
-    const computed = await getDashboardStats(updatedProposals, userId || undefined, true);
+    const computed = await getDashboardStats(updatedProposals, userId || undefined, true, itensVendidosRef.current);
     if (stats?.insights) {
       computed.insights = stats.insights;
     }

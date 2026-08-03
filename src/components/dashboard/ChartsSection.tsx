@@ -29,6 +29,7 @@ import {
   TrendingUp,
   TrendingDown,
   Cpu,
+  PackageSearch,
 } from 'lucide-react';
 
 // ── Local sub-components ──────────────────────────────────────────────────────
@@ -107,6 +108,93 @@ function MarketStatCard({
   );
 }
 
+/**
+ * Ranking horizontal de carregadores.
+ *
+ * As barras são deitadas porque o rótulo é o nome do produto — em pé, "Eco
+ * SuperFast DC 40kW" ou vira reticências ou vira texto na diagonal.
+ */
+function RankingCarregadores({
+  titulo,
+  etiqueta,
+  dados,
+  dataKey,
+  nomeSerie,
+  cor,
+  vazio,
+  gridStroke,
+  textFill,
+  tooltip,
+  delay,
+}: {
+  titulo: string;
+  etiqueta: string;
+  dados: any[];
+  dataKey: string;
+  nomeSerie: string;
+  cor: string;
+  vazio: boolean;
+  gridStroke: string;
+  textFill: string;
+  tooltip: any;
+  delay: number;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 15 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay }}
+      className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm transition-colors duration-300"
+    >
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-bold uppercase tracking-wider text-gray-950 dark:text-white">{titulo}</h3>
+        <span className="text-[10px] bg-primary/5 text-primary dark:bg-accent/5 dark:text-accent font-bold px-2.5 py-1 rounded-md">
+          {etiqueta}
+        </span>
+      </div>
+
+      <div className="h-64 w-full">
+        {vazio ? (
+          <div className="h-full flex flex-col items-center justify-center text-center px-6">
+            <PackageSearch className="text-gray-300 dark:text-slate-700 mb-3" size={32} />
+            <p className="text-xs font-bold text-gray-400 dark:text-slate-500">
+              Nenhuma proposta fechada ainda
+            </p>
+            <p className="text-[11px] text-gray-400 dark:text-slate-600 mt-1 max-w-[16rem]">
+              O ranking aparece assim que o primeiro negócio for marcado como concluído.
+            </p>
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={dados} layout="vertical" margin={{ top: 5, right: 16, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} horizontal={false} />
+              <XAxis type="number" stroke={textFill} fontSize={10} tickLine={false} />
+              <YAxis
+                type="category"
+                dataKey="name"
+                stroke={textFill}
+                fontSize={10}
+                tickLine={false}
+                width={150}
+                // Folga suficiente para o nome inteiro do modelo. Cortar mais
+                // curto engolia justamente a potência — "Eco SuperFast DC 40kW"
+                // virava "Eco SuperFast DC …", e é a potência que distingue um
+                // modelo do outro.
+                tickFormatter={(v: string) => (v.length > 26 ? `${v.slice(0, 25)}…` : v)}
+              />
+              <Tooltip content={tooltip} cursor={{ fill: 'transparent' }} />
+              {/* Sem rótulo em cima da barra: no recharts 3.8 ele não sai nesta
+                  combinação de layout deitado com camadas de z-index. O número
+                  exato continua no tooltip, e a escala fica no eixo. */}
+              <Bar dataKey={dataKey} name={nomeSerie} fill={cor} radius={[0, 4, 4, 0]} barSize={18} />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 interface ChartsSectionProps {
@@ -120,6 +208,11 @@ export function ChartsSection({ stats, theme }: ChartsSectionProps) {
   const isDark = theme === 'dark';
   const gridStroke = isDark ? '#1f2937' : '#e2e8f0';
   const textFill = isDark ? '#94a3b8' : '#64748b';
+
+  // O ranking conta só o que foi vendido de fato. Sem nenhuma proposta fechada
+  // ele seria um gráfico de barras zeradas, que parece defeito — melhor dizer
+  // que ainda não há venda.
+  const semVendas = (stats.vendasPorCarregador?.totalUnidades ?? 0) === 0;
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
@@ -349,7 +442,37 @@ export function ChartsSection({ stats, theme }: ChartsSectionProps) {
         </motion.div>
       </div>
 
-      {/* Section 3: Mercado de Mobilidade Elétrica */}
+      {/* Section 3: Qual carregador mais vende */}
+      <div data-tour="ranking-carregadores" className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <RankingCarregadores
+          titulo="Carregadores Mais Vendidos"
+          etiqueta="Unidades fechadas"
+          dados={stats.charts.chargerRankingPorUnidades ?? []}
+          dataKey="unidades"
+          nomeSerie="Unidades"
+          cor="#B2D235"
+          vazio={semVendas}
+          gridStroke={gridStroke}
+          textFill={textFill}
+          tooltip={<CustomTooltip />}
+          delay={0.1}
+        />
+        <RankingCarregadores
+          titulo="Receita por Carregador"
+          etiqueta="Propostas fechadas"
+          dados={stats.charts.chargerRankingPorReceita ?? []}
+          dataKey="receita"
+          nomeSerie="Receita"
+          cor="#004D31"
+          vazio={semVendas}
+          gridStroke={gridStroke}
+          textFill={textFill}
+          tooltip={<CustomTooltip />}
+          delay={0.2}
+        />
+      </div>
+
+      {/* Section 4: Mercado de Mobilidade Elétrica */}
       <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm transition-colors duration-300">
         <div className="flex items-center gap-2 mb-6 border-b border-gray-50 dark:border-slate-800 pb-4">
           <Cpu className="text-primary dark:text-accent" size={24} />

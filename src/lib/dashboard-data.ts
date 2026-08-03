@@ -1,5 +1,6 @@
-import { ProposalData } from '@/types/proposal';
+import { ProposalData, lerItens } from '@/types/proposal';
 import { askGemini } from '@/lib/ai';
+import { ItemVendido, NOME_SEM_PRODUTO, potenciaEmKw } from '@/lib/proposal-items';
 
 export interface DashboardProposal {
   id: string;
@@ -103,7 +104,86 @@ const generateMockProposals = (): DashboardProposal[] => {
   return mockProposals.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 };
 
-export const getDashboardStats = async (realProposals: any[], userId?: string, skipAi = false) => {
+/** Um carregador no ranking de vendas. */
+export interface CarregadorNoRanking {
+  name: string;
+  /** Unidades e receita das propostas fechadas. */
+  unidades: number;
+  receita: number;
+  /** Os mesmos números somando toda proposta, fechada ou não. */
+  unidadesPropostas: number;
+  receitaProposta: number;
+  potenciaKw: number | null;
+}
+
+/**
+ * Ranking de carregadores por unidades e por receita.
+ *
+ * Os itens vêm da tabela proposal_items, mas o STATUS não: ele vem da lista de
+ * propostas que a tela já tem em mãos. Assim mover um card no kanban muda o
+ * ranking na hora, sem ida ao banco, e o gráfico nunca discorda dos KPIs ao
+ * lado dele.
+ *
+ * Proposta sem linha na tabela — as de demonstração, e as salvas antes da
+ * migração — cai para lerItens() sobre o próprio JSONB. É a mesma leitura que o
+ * PDF faz, então o resultado é o mesmo; só não passa pelo banco.
+ */
+const montarRankingCarregadores = (
+  allProposals: DashboardProposal[],
+  itensVendidos: ItemVendido[],
+): CarregadorNoRanking[] => {
+  const itensPorProposta = new Map<string, ItemVendido[]>();
+  for (const item of itensVendidos) {
+    const lista = itensPorProposta.get(item.proposalId);
+    if (lista) lista.push(item);
+    else itensPorProposta.set(item.proposalId, [item]);
+  }
+
+  const acumulado = new Map<string, CarregadorNoRanking>();
+
+  for (const proposta of allProposals) {
+    const doBanco = itensPorProposta.get(proposta.id);
+    const itens: ItemVendido[] = doBanco ?? lerItens(proposta.commercial_data?.commercial).map(i => ({
+      proposalId: proposta.id,
+      nome: i.productName?.trim() || NOME_SEM_PRODUTO,
+      potenciaKw: potenciaEmKw(i.power),
+      quantidade: Number(i.quantity) || 0,
+      subtotal: (Number(i.unitPrice) || 0) * (Number(i.quantity) || 0),
+    }));
+
+    const fechada = proposta.status === 'Concluído';
+
+    for (const item of itens) {
+      const atual = acumulado.get(item.nome) ?? {
+        name: item.nome,
+        unidades: 0,
+        receita: 0,
+        unidadesPropostas: 0,
+        receitaProposta: 0,
+        potenciaKw: item.potenciaKw,
+      };
+
+      atual.unidadesPropostas += item.quantidade;
+      atual.receitaProposta += item.subtotal;
+      if (fechada) {
+        atual.unidades += item.quantidade;
+        atual.receita += item.subtotal;
+      }
+      if (atual.potenciaKw === null) atual.potenciaKw = item.potenciaKw;
+
+      acumulado.set(item.nome, atual);
+    }
+  }
+
+  return [...acumulado.values()].sort((a, b) => b.receita - a.receita || b.unidades - a.unidades);
+};
+
+export const getDashboardStats = async (
+  realProposals: any[],
+  userId?: string,
+  skipAi = false,
+  itensVendidos: ItemVendido[] = [],
+) => {
   let mockProposals: DashboardProposal[] = [];
   if (typeof window !== 'undefined') {
     const hasRealDataKey = userId ? `proposalpro_has_real_data_${userId}` : 'proposalpro_has_real_data';
@@ -313,6 +393,18 @@ export const getDashboardStats = async (realProposals: any[], userId?: string, s
     }))
     .sort((a, b) => b.value - a.value);
 
+  // 12b. Ranking de carregadores por unidades e por receita.
+  // Diferente de topProducts, que conta PROPOSTAS e lê só o produto espelhado,
+  // este conta os produtos um a um, com quantidade — que é o que responde
+  // "qual carregador mais vende".
+  const chargerRanking = montarRankingCarregadores(allProposals, itensVendidos);
+  const chargerRankingPorUnidades = [...chargerRanking]
+    .sort((a, b) => b.unidades - a.unidades || b.receita - a.receita)
+    .slice(0, 6);
+  const chargerRankingPorReceita = chargerRanking.slice(0, 6);
+  const totalUnidadesVendidas = chargerRanking.reduce((s, c) => s + c.unidades, 0);
+  const receitaTotalVendida = chargerRanking.reduce((s, c) => s + c.receita, 0);
+
   // 13. IA Insights dinâmicos (Gemini)
   const insights: Array<{ type: string; title: string; description: string }> = [];
   
@@ -426,7 +518,14 @@ export const getDashboardStats = async (realProposals: any[], userId?: string, s
     charts: {
       evolutionData,
       funnelData,
-      statusData
+      statusData,
+      chargerRankingPorUnidades,
+      chargerRankingPorReceita
+    },
+    vendasPorCarregador: {
+      ranking: chargerRanking,
+      totalUnidades: totalUnidadesVendidas,
+      receitaTotal: receitaTotalVendida
     },
     market: {
       proposedChargers,
