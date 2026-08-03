@@ -68,7 +68,7 @@ export default function SignupPage() {
         return;
       }
 
-      router.push('/login?message=Verifique seu e-mail para confirmar a conta');
+      router.push('/login?aviso=confirme-email');
     } catch (err: unknown) {
       const bruto = err instanceof Error ? err.message : String(err);
       setError(traduzirErroCadastro(bruto));

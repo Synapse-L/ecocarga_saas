@@ -1,18 +1,38 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
-import { Mail, Lock, Loader2, ArrowRight } from 'lucide-react';
+import { Mail, Lock, Loader2, ArrowRight, CheckCircle2 } from 'lucide-react';
 import Link from 'next/link';
+
+/**
+ * Avisos que outras telas pedem para mostrar aqui, via `?aviso=`.
+ *
+ * É um código fixo, e não o texto pronto, justamente porque qualquer pessoa
+ * pode montar o endereço: assim ninguém consegue escrever o que quiser numa
+ * tela de login usando um link.
+ */
+const AVISOS: Record<string, string> = {
+  'confirme-email': 'Conta criada. Verifique seu e-mail para confirmá-la antes de entrar.',
+  'senha-alterada': 'Senha alterada com sucesso. Entre com a nova senha.',
+};
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
   const router = useRouter();
+
+  // Lido do window em vez de useSearchParams() para não ter que embrulhar a
+  // página inteira num <Suspense> só por causa de uma faixa de aviso.
+  useEffect(() => {
+    const codigo = new URLSearchParams(window.location.search).get('aviso');
+    if (codigo && AVISOS[codigo]) setAviso(AVISOS[codigo]);
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,6 +71,13 @@ export default function LoginPage() {
               Acesse sua conta para gerenciar suas propostas comerciais.
             </p>
           </div>
+
+          {aviso && (
+            <div className="mb-4 p-3 rounded-lg bg-primary/5 text-primary text-xs font-medium border border-primary/10 flex items-start gap-2">
+              <CheckCircle2 size={14} className="shrink-0 mt-px" />
+              <span>{aviso}</span>
+            </div>
+          )}
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="space-y-2">
