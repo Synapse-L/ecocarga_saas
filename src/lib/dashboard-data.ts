@@ -183,37 +183,33 @@ export const getDashboardStats = async (
   userId?: string,
   skipAi = false,
   itensVendidos: ItemVendido[] = [],
+  /**
+   * Liga as 28 propostas de demonstração. Só quem pede vê.
+   *
+   * Antes elas entravam sozinhas sempre que a base parecia vazia, e um flag no
+   * localStorage decidia quando parar. Quem abrisse a conta pela primeira vez
+   * via faturamento, ticket médio e taxa de conversão inventados, sem nada na
+   * tela dizendo isso — números que dá para repetir numa reunião sem perceber.
+   * Num sistema comercial esse erro é pior que tela vazia.
+   */
+  demonstracao = false,
 ) => {
   let mockProposals: DashboardProposal[] = [];
-  if (typeof window !== 'undefined') {
-    const hasRealDataKey = userId ? `proposalpro_has_real_data_${userId}` : 'proposalpro_has_real_data';
-    if (realProposals.length > 0 && userId) {
-      localStorage.setItem(hasRealDataKey, 'true');
-    }
-    const hasRealData = localStorage.getItem(hasRealDataKey) === 'true';
 
-    if (hasRealData) {
-      mockProposals = [];
-    } else {
-      const mockKey = userId ? `proposalpro_mock_proposals_${userId}` : 'proposalpro_mock_proposals';
-      const saved = sessionStorage.getItem(mockKey);
-      if (saved) {
-        try {
-          mockProposals = JSON.parse(saved);
-        } catch (e) {
-          mockProposals = generateMockProposals();
-          sessionStorage.setItem(mockKey, JSON.stringify(mockProposals));
-        }
-      } else {
-        mockProposals = generateMockProposals();
-        sessionStorage.setItem(mockKey, JSON.stringify(mockProposals));
-      }
-    }
-  } else {
-    if (realProposals.length > 0) {
-      mockProposals = [];
-    } else {
+  if (demonstracao) {
+    // Guardadas na sessão para sobreviver à navegação: sem isso cada recarga
+    // sorteia outro conjunto e os gráficos mudam sozinhos durante uma demo.
+    const mockKey = userId ? `proposalpro_mock_proposals_${userId}` : 'proposalpro_mock_proposals';
+    if (typeof window === 'undefined') {
       mockProposals = generateMockProposals();
+    } else {
+      const saved = sessionStorage.getItem(mockKey);
+      try {
+        mockProposals = saved ? JSON.parse(saved) : generateMockProposals();
+      } catch {
+        mockProposals = generateMockProposals();
+      }
+      if (!saved) sessionStorage.setItem(mockKey, JSON.stringify(mockProposals));
     }
   }
 

@@ -32,7 +32,8 @@ import {
   Link2,
   PenLine,
   GraduationCap,
-  Keyboard
+  Keyboard,
+  AlertTriangle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
@@ -97,6 +98,12 @@ export default function Dashboard() {
   // callbacks e precisam do valor de agora, não do valor da renderização em que
   // o callback nasceu.
   const itensVendidosRef = useRef<ItemVendido[]>([]);
+
+  // Modo demonstração: propostas fictícias, só com ?demo=1 na URL.
+  // Lido do window em vez de useSearchParams() para não obrigar a página
+  // inteira a um <Suspense>. Num ref pelo mesmo motivo do de cima.
+  const demoRef = useRef(false);
+  const [modoDemo, setModoDemo] = useState(false);
 
   // Table filtering, sorting, pagination states
   const [statusFilter, setStatusFilter] = useState<string>('All');
@@ -171,6 +178,13 @@ export default function Dashboard() {
     if (!silent) {
       setLoading(true);
     }
+    // Definido aqui, antes de qualquer cálculo, porque todo recálculo posterior
+    // lê o ref — inclusive os que rodam dentro de callbacks do kanban.
+    if (typeof window !== 'undefined') {
+      const demo = new URLSearchParams(window.location.search).get('demo') === '1';
+      demoRef.current = demo;
+      setModoDemo(demo);
+    }
     try {
       const { data: { user } } = await supabase.auth.getUser();
       setFetchError(false);
@@ -198,7 +212,7 @@ export default function Dashboard() {
       itensVendidosRef.current = await buscarItensVendidos(user.id);
 
       // Calculate commercial intelligence stats
-      const computed = await getDashboardStats(realData, user.id, false, itensVendidosRef.current);
+      const computed = await getDashboardStats(realData, user.id, false, itensVendidosRef.current, demoRef.current);
       setStats(computed);
       if (typeof window !== 'undefined') {
         sessionStorage.setItem('dashboardStats', JSON.stringify(computed));
@@ -344,16 +358,13 @@ export default function Dashboard() {
             const mocks = JSON.parse(saved);
             const filteredMocks = mocks.filter((p: any) => p.id !== id);
             sessionStorage.setItem(mockKey, JSON.stringify(filteredMocks));
-            if (filteredMocks.length === 0 && userId) {
-              localStorage.setItem(`proposalpro_has_real_data_${userId}`, 'true');
-            }
           } catch (e) {
             console.error('Error parsing mock proposals', e);
           }
         }
       }
 
-      const computed = await getDashboardStats(updatedProposals, userId || undefined, true, itensVendidosRef.current);
+      const computed = await getDashboardStats(updatedProposals, userId || undefined, true, itensVendidosRef.current, demoRef.current);
       if (stats?.insights) {
         computed.insights = stats.insights;
       }
@@ -448,7 +459,7 @@ export default function Dashboard() {
       } : prev);
 
       // Update UI and stats for mocks immediately
-      const computed = await getDashboardStats(proposals, userId || undefined, true, itensVendidosRef.current);
+      const computed = await getDashboardStats(proposals, userId || undefined, true, itensVendidosRef.current, demoRef.current);
       if (stats?.insights) {
         computed.insights = stats.insights;
       }
@@ -477,7 +488,7 @@ export default function Dashboard() {
     } : prev);
 
     // Recalculate and update stats immediately
-    const computed = await getDashboardStats(updatedProposals, userId || undefined, true, itensVendidosRef.current);
+    const computed = await getDashboardStats(updatedProposals, userId || undefined, true, itensVendidosRef.current, demoRef.current);
     if (stats?.insights) {
       computed.insights = stats.insights;
     }
@@ -1127,6 +1138,60 @@ export default function Dashboard() {
 
         {/* Evolved Scrollable Content Area */}
         <div className="p-8 space-y-8 max-w-7xl mx-auto w-full">
+
+        {/* Modo demonstração — número fictício na tela tem que se anunciar,
+            senão vira número real na cabeça de quem lê. */}
+        {modoDemo && (
+          <div className="flex items-center justify-between gap-4 p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="text-amber-500 shrink-0 mt-0.5" size={18} />
+              <div>
+                <p className="text-sm font-bold text-amber-900 dark:text-amber-200">
+                  Modo demonstração
+                </p>
+                <p className="text-xs text-amber-700 dark:text-amber-300/80 mt-0.5">
+                  Os números abaixo incluem propostas fictícias. Não use como relatório.
+                </p>
+              </div>
+            </div>
+            <a
+              href="/"
+              className="shrink-0 text-xs font-bold text-amber-900 dark:text-amber-200 underline hover:no-underline"
+            >
+              Sair do modo demonstração
+            </a>
+          </div>
+        )}
+
+        {/* Base vazia: em vez de gráficos zerados, que parecem defeito. */}
+        {stats.allProposals.length === 0 ? (
+          <div className="flex flex-col items-center justify-center text-center py-24">
+            <div className="w-14 h-14 rounded-2xl bg-primary/5 flex items-center justify-center mb-5">
+              <FileText className="text-primary" size={26} />
+            </div>
+            <h2 className="text-xl font-black tracking-tight text-gray-900 dark:text-white">
+              Nenhuma proposta ainda
+            </h2>
+            <p className="text-sm text-gray-500 dark:text-slate-400 mt-2 max-w-md">
+              Assim que a primeira proposta for criada, os indicadores, o ranking de
+              carregadores e o histórico aparecem aqui.
+            </p>
+            <button
+              onClick={() => router.push('/proposals/new')}
+              className="mt-6 bg-primary text-white px-5 py-2.5 rounded-full font-bold flex items-center gap-2 hover:opacity-90 transition-all active:scale-95 text-sm cursor-pointer"
+            >
+              <Plus size={18} />
+              Criar primeira proposta
+            </button>
+            {!modoDemo && (
+              <a href="/?demo=1" className="mt-6 text-xs text-gray-400 dark:text-slate-500 hover:text-primary hover:underline">
+                Ver o painel com dados de demonstração
+              </a>
+            )}
+          </div>
+        ) : (
+        <>
+
         {/* Tab Navigation */}
         <div data-tour="tab-nav" className="flex gap-4 mb-6">
           <button
@@ -1572,6 +1637,8 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
+        )}
+        </>
         )}
       </div>
     </main>
