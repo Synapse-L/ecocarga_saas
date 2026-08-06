@@ -76,6 +76,39 @@ export interface ProposalData {
   };
 }
 
+/** Os status que uma proposta assume no kanban. */
+export type StatusProposta = 'Rascunho' | 'Enviado' | 'Negociação' | 'Concluído' | 'Vencido';
+
+/**
+ * Uma linha da tabela `proposals`, como ela chega do Supabase.
+ *
+ * Existe para que `commercial_data` pare de entrar na aplicação como `any`.
+ * Enquanto era `any`, renomear um campo do JSONB não gerava erro em nenhum dos
+ * treze pontos que leem `commercial.price` — o dado simplesmente virava
+ * `undefined` em produção, e num campo de valor isso vira R$ 0 numa proposta.
+ *
+ * `client` e `template` só vêm preenchidos nas consultas que fazem o join.
+ */
+export interface LinhaProposta {
+  id: string;
+  user_id: string;
+  client_id: string | null;
+  template_id: string | null;
+  title: string;
+  status: StatusProposta | string;
+  commercial_data: ProposalData;
+  final_pdf_url?: string | null;
+  public_token?: string | null;
+  is_public?: boolean | null;
+  client_signature?: string | null;
+  client_signed_at?: string | null;
+  lead_id?: string | null;
+  created_at: string;
+  updated_at: string;
+  client?: { name: string } | null;
+  template?: { file_url: string } | null;
+}
+
 /**
  * Estado do formulário de criação. Difere de `ProposalData` num ponto: aqui
  * `itens` é obrigatório, porque o formulário sempre nasce com um item em

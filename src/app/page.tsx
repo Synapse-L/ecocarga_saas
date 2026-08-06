@@ -43,6 +43,7 @@ import { montarDadosOrcamento } from '@/lib/pdf-quote-page';
 import { ProposalCover } from '@/components/ProposalCover';
 import { useApp } from '@/context/AppContext';
 import { getDashboardStats, DashboardProposal } from '@/lib/dashboard-data';
+import { LinhaProposta } from '@/types/proposal';
 import { buscarItensVendidos, gravarItensDaProposta, ItemVendido } from '@/lib/proposal-items';
 import { useToast } from '@/components/Toast';
 import { useConfirm } from '@/components/ConfirmDialog';
@@ -89,7 +90,9 @@ export default function Dashboard() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
-  const [proposals, setProposals] = useState<any[]>([]);
+  // Linhas cruas da tabela `proposals`. Tipadas para que um campo renomeado
+  // dentro de commercial_data quebre a compilação em vez de virar undefined.
+  const [proposals, setProposals] = useState<LinhaProposta[]>([]);
   const router = useRouter();
   
   // Dashboard evolved stats state
@@ -206,7 +209,11 @@ export default function Dashboard() {
         `)
         .order('created_at', { ascending: false });
 
-      const realData = proposalData || [];
+      // O cliente do Supabase não é gerado a partir do esquema, então devolve
+      // `any`. A forma é declarada aqui, no ponto de entrada, para que daqui
+      // para dentro o dado seja verificado — em vez de `any` se espalhar até os
+      // treze lugares que leem commercial.price.
+      const realData = (proposalData ?? []) as LinhaProposta[];
       setProposals(realData);
 
       // Itens vendidos, para o ranking de carregadores. Vem junto com as
@@ -243,7 +250,7 @@ export default function Dashboard() {
   };
 
   // PDF action handlers
-  const handleView = async (proposal: any) => {
+  const handleView = async (proposal: LinhaProposta | DashboardProposal) => {
     setViewingId(proposal.id);
     setCurrentProposal(proposal.commercial_data);
     
@@ -310,7 +317,13 @@ export default function Dashboard() {
     }, 500);
   };
 
-  const handleDuplicate = async (proposal: any) => {
+  const handleDuplicate = async (proposal: LinhaProposta | DashboardProposal) => {
+    // Proposta de demonstração não tem linha no banco: copiar geraria um
+    // registro órfão, sem cliente, que depois ninguém entende de onde veio.
+    if (String(proposal.id).startsWith('mock-')) {
+      toast('Esta é uma proposta de demonstração e não pode ser duplicada.', 'info');
+      return;
+    }
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -401,7 +414,7 @@ export default function Dashboard() {
   };
 
   // ── Generate public link for a proposal ──
-  const handleShareProposal = async (proposal: any) => {
+  const handleShareProposal = async (proposal: LinhaProposta | DashboardProposal) => {
     setSharingId(proposal.id);
     try {
       // Generate token if not set yet

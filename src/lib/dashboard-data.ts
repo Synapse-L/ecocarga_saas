@@ -1,4 +1,4 @@
-import { ProposalData, lerItens } from '@/types/proposal';
+import { ProposalData, LinhaProposta, lerItens } from '@/types/proposal';
 import { askGemini } from '@/lib/ai';
 import { ItemVendido, NOME_SEM_PRODUTO, potenciaEmKw } from '@/lib/proposal-items';
 
@@ -8,15 +8,56 @@ export interface DashboardProposal {
   status: 'Rascunho' | 'Enviado' | 'Concluído' | 'Vencido' | 'Negociação';
   created_at: string;
   updated_at: string;
+
+  /**
+   * Campos da linha original que a tela precisa devolver ao banco.
+   *
+   * Faltavam aqui, e como a lista era `any` ninguém reclamava: duplicar uma
+   * proposta gravava a cópia sem `client_id`, e compartilhar não enxergava o
+   * `public_token` existente, gerando outro e derrubando o link que o cliente
+   * já tinha recebido. Ausentes nas propostas de demonstração, que não têm
+   * linha no banco.
+   */
+  client_id?: string | null;
+  template_id?: string | null;
+  public_token?: string | null;
+  is_public?: boolean | null;
+
   client?: {
     name: string;
   };
   commercial_data: ProposalData;
-  template?: {
-    file_url: string;
-  };
+  /** Null quando a proposta não usa template — é o que o join devolve. */
+  template?: { file_url: string } | null;
   client_signed_at?: string | null;
 }
+
+/**
+ * Normaliza o status vindo do banco, que é texto livre.
+ *
+ * "Aprovada" e "Recusada" são nomes antigos que ainda existem em propostas
+ * gravadas antes da renomeação. Qualquer coisa fora da lista vira 'Rascunho' e
+ * é registrada: antes o valor desconhecido passava direto, e todo
+ * `status === 'Concluído'` do dashboard falhava calado — a proposta sumia dos
+ * KPIs sem nada indicar por quê.
+ */
+const normalizarStatus = (bruto: string): DashboardProposal['status'] => {
+  switch (bruto) {
+    case 'Rascunho':
+    case 'Enviado':
+    case 'Negociação':
+    case 'Concluído':
+    case 'Vencido':
+      return bruto;
+    case 'Aprovada':
+      return 'Concluído';
+    case 'Recusada':
+      return 'Vencido';
+    default:
+      console.warn(`Status de proposta desconhecido no banco: "${bruto}". Tratando como Rascunho.`);
+      return 'Rascunho';
+  }
+};
 
 // Generates 25 realistic historical proposals spread over the last 12 months
 const generateMockProposals = (): DashboardProposal[] => {
@@ -179,7 +220,7 @@ const montarRankingCarregadores = (
 };
 
 export const getDashboardStats = async (
-  realProposals: any[],
+  realProposals: LinhaProposta[],
   userId?: string,
   skipAi = false,
   itensVendidos: ItemVendido[] = [],
@@ -219,13 +260,17 @@ export const getDashboardStats = async (
   const formattedRealProposals: DashboardProposal[] = realProposals.map(p => ({
     id: p.id,
     title: p.title,
-    status: p.status === 'Aprovada' ? 'Concluído' : p.status === 'Recusada' ? 'Vencido' : p.status,
+    status: normalizarStatus(p.status),
     created_at: p.created_at,
     updated_at: p.updated_at,
     client: p.client ? { name: p.client.name } : { name: p.commercial_data?.client?.name || 'Cliente s/ nome' },
     commercial_data: p.commercial_data,
     template: p.template,
-    client_signed_at: p.client_signed_at
+    client_signed_at: p.client_signed_at,
+    client_id: p.client_id,
+    template_id: p.template_id,
+    public_token: p.public_token,
+    is_public: p.is_public
   }));
 
   const allProposals = [...formattedRealProposals, ...mockProposals];
