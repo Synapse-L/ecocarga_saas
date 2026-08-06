@@ -36,14 +36,14 @@ interface SalespersonPerformance {
   goalAchievement: number; // percentage
 }
 
-// --- Mock Data ---
-const MOCK_DEALS: CommissionDeal[] = [
-  { id: 'd-201', client: 'Residencial Green Park', product: '3x Wallbox Pro 22kW', dealValue: 35000, commPercent: 5, commValue: 1750, date: '25/06/2026', status: 'processando' },
-  { id: 'd-202', client: 'Grand Hyatt Hotel', product: '2x Wallbox Business 22kW', dealValue: 32000, commPercent: 5, commValue: 1600, date: '18/05/2026', status: 'pago' },
-  { id: 'd-203', client: 'Condomínio Spazio', product: '1x Wallbox Pro 22kW', dealValue: 12000, commPercent: 5, commValue: 600, date: '02/05/2026', status: 'pago' },
-  { id: 'd-204', client: 'Empresa VoltCorp', product: 'Infraestrutura AC Geral', dealValue: 45000, commPercent: 4, commValue: 1800, date: '15/04/2026', status: 'pago' }
-];
-
+/**
+ * Ranking da equipe — ainda sem banco por trás.
+ *
+ * Não existe tabela de desempenho por vendedor, então estes números são
+ * ilustrativos e a tela diz isso em cima do quadro. Ficam aqui em vez de a
+ * seção sumir porque a aba do gestor perderia o sentido, mas nenhum deles pode
+ * ser lido como resultado real.
+ */
 const MOCK_RANKING: SalespersonPerformance[] = [
   { rank: 1, name: 'Thiago Alencar (Você)', salesVolume: 185000, commissionEarned: 9250, goalAchievement: 123 },
   { rank: 2, name: 'Aline Souza', salesVolume: 140000, commissionEarned: 7000, goalAchievement: 93 },
@@ -70,37 +70,34 @@ export default function CommissionsPage() {
     totalRetained 
   } = useCommissions();
 
-  // Dynamic deals mapping with fallback to mock data
-  const deals: CommissionDeal[] = dbCommissions.length > 0 
-    ? dbCommissions.map(c => ({
-        id: c.id,
-        client: c.client,
-        product: c.product,
-        dealValue: Number(c.deal_value),
-        commPercent: Number(c.comm_percent),
-        commValue: Number(c.comm_value),
-        date: c.created_at ? new Date(c.created_at).toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR'),
-        status: c.status as any
-      }))
-    : MOCK_DEALS;
+  // Comissões reais, sem rede de segurança fictícia.
+  //
+  // Antes, com a tabela vazia, cada número abaixo caía num valor fixo escrito
+  // no código — R$ 432.000 de volume, R$ 9.250 acumulados, 185.000 realizados.
+  // Numa tela sobre quanto alguém tem a receber, número inventado não é
+  // preenchimento de layout: é o vendedor conferindo o próprio pagamento.
+  const deals: CommissionDeal[] = dbCommissions.map(c => ({
+    id: c.id,
+    client: c.client,
+    product: c.product,
+    dealValue: Number(c.deal_value),
+    commPercent: Number(c.comm_percent),
+    commValue: Number(c.comm_value),
+    date: c.created_at ? new Date(c.created_at).toLocaleDateString('pt-BR') : '—',
+    status: c.status as any
+  }));
 
-  // Consolidated statistics
-  const totalVolumeGeral = dbCommissions.length > 0
-    ? dbCommissions.reduce((sum, c) => sum + Number(c.deal_value), 0)
-    : 432000;
+  const totalVolumeGeral = dbCommissions.reduce((sum, c) => sum + Number(c.deal_value), 0);
+  const totalComissoesDevidas = totalEarned + totalPending + totalRetained;
+  const comissaoAcumulada = totalEarned + totalPending;
+  const comissaoLiberada = totalEarned;
 
-  const totalComissoesDevidas = dbCommissions.length > 0
-    ? (totalEarned + totalPending + totalRetained)
-    : 21600;
+  const totalVolumeRealizado = dbCommissions
+    .filter(c => c.status === 'pago' || c.status === 'processando')
+    .reduce((sum, c) => sum + Number(c.deal_value), 0);
 
-  const comissaoAcumulada = dbCommissions.length > 0 ? (totalEarned + totalPending) : 9250;
-  const comissaoLiberada = dbCommissions.length > 0 ? totalEarned : 7500;
-
-  const totalVolumeRealizado = dbCommissions.length > 0
-    ? dbCommissions.filter(c => c.status === 'pago' || c.status === 'processando').reduce((sum, c) => sum + Number(c.deal_value), 0)
-    : 185000;
-
-  const percentageMet = Math.round((totalVolumeRealizado / 150000) * 100);
+  const META_VOLUME = 150000;
+  const percentageMet = Math.round((totalVolumeRealizado / META_VOLUME) * 100);
   
   // Vendedor State (Calculator)
   const [selectedProduct, setSelectedProduct] = useState(PRODUCT_CATEGORIES[1].id);
@@ -272,6 +269,17 @@ export default function CommissionsPage() {
                     </div>
 
                     <div className="space-y-3">
+                      {deals.length === 0 && (
+                        <div className="py-12 text-center">
+                          <p className="text-xs font-bold text-gray-400 dark:text-slate-500">
+                            Nenhuma comissão lançada ainda
+                          </p>
+                          <p className="text-[11px] text-gray-400 dark:text-slate-600 mt-1.5 max-w-xs mx-auto leading-relaxed">
+                            As comissões aparecem aqui conforme a gestão as lança para as
+                            propostas fechadas.
+                          </p>
+                        </div>
+                      )}
                       {deals.map(deal => (
                         <div 
                           key={deal.id}
@@ -440,8 +448,14 @@ export default function CommissionsPage() {
                   <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-3xl p-6 shadow-sm lg:col-span-3 space-y-4">
                     <div className="flex items-center justify-between">
                       <h3 className="text-sm font-black text-gray-900 dark:text-white">Ranking de Performance da Equipe</h3>
-                      <span className="text-[10px] text-emerald-500 font-extrabold bg-emerald-50 dark:bg-emerald-950/20 px-2 py-0.5 rounded-full">Gamificado</span>
+                      <span className="text-[10px] text-amber-600 dark:text-amber-400 font-extrabold bg-amber-50 dark:bg-amber-950/20 px-2 py-0.5 rounded-full">
+                        Dados de exemplo
+                      </span>
                     </div>
+                    <p className="text-[10px] text-gray-400 dark:text-slate-500 leading-relaxed -mt-1">
+                      Ainda não há registro de desempenho por vendedor no banco. Os nomes e
+                      valores abaixo são ilustrativos.
+                    </p>
 
                     <div className="space-y-3">
                       {MOCK_RANKING.map((member, idx) => (

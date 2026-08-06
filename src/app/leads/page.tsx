@@ -2,7 +2,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   LayoutDashboard, FileText, Users, Settings, LogOut, Cpu, Sliders,
   Search, Plus, Phone, MessageSquare, TrendingUp, TrendingDown, Clock,
@@ -34,96 +34,6 @@ interface Lead {
   timeline?: { event: string; time: string; type: 'in' | 'out' | 'system' }[];
 }
 
-// ─── Mock Data ───────────────────────────────────────────────────────────────
-const MOCK_LEADS: Lead[] = [
-  {
-    id: 1, name: 'João Silva', phone: '(11) 98765-4321',
-    interest: 'Condomínio 3 carregadores', status: 'new', time: '2h atrás',
-    score: 87, tags: ['condomínio', 'urgente', '3 carregadores'],
-    firstMsg: 'Boa tarde! Vi no Instagram da EcoCarga e tenho interesse em instalar carregadores no meu condomínio.',
-    origin: 'instagram',
-    timeline: [
-      { event: 'Primeiro contato via WhatsApp', time: '2h atrás', type: 'in' },
-      { event: '"Boa tarde! Vi no Instagram da EcoCarga..."', time: '2h atrás', type: 'in' },
-      { event: 'Lead registrado automaticamente', time: '2h atrás', type: 'system' },
-    ]
-  },
-  {
-    id: 2, name: 'Maria Santos', phone: '(21) 91234-5678',
-    interest: 'Frota corporativa DC 50kW', status: 'qualified', time: '1d atrás',
-    score: 92, tags: ['frota', 'PJ', 'alto valor', 'DC'],
-    firstMsg: 'Precisamos de carregadores rápidos para nossa frota de veículos elétricos. Temos 8 veículos e prevemos dobrar em 6 meses.',
-    origin: 'site',
-    timeline: [
-      { event: 'Primeiro contato via Site', time: '1d atrás', type: 'in' },
-      { event: '"Precisamos de carregadores rápidos..."', time: '1d atrás', type: 'in' },
-      { event: 'Qualificado pelo vendedor', time: '18h atrás', type: 'system' },
-      { event: 'Enviou especificação técnica da frota', time: '16h atrás', type: 'in' },
-    ]
-  },
-  {
-    id: 3, name: 'Pedro Oliveira', phone: '(11) 97654-3210',
-    interest: 'Posto de gasolina 150kW', status: 'proposal', time: '3d atrás',
-    score: 78, tags: ['posto', 'DC', 'rodovia', '150kW'],
-    firstMsg: 'Tenho um posto na Rodovia Anhanguera e quero instalar carregadores ultra-rápidos para veículos de passagem.',
-    origin: 'whatsapp',
-    timeline: [
-      { event: 'Primeiro contato via WhatsApp', time: '3d atrás', type: 'in' },
-      { event: 'Reunião por vídeo realizada', time: '2d atrás', type: 'system' },
-      { event: 'Proposta enviada por e-mail', time: '1d atrás', type: 'out' },
-      { event: '"Vou analisar com meu sócio..."', time: '22h atrás', type: 'in' },
-    ]
-  },
-  {
-    id: 4, name: 'Ana Costa', phone: '(11) 99876-5432',
-    interest: 'Residencial 7.4kW AC', status: 'closed', time: '1sem atrás',
-    score: 65, tags: ['residencial', 'AC', '7.4kW'],
-    firstMsg: 'Oi! Comprei um Tesla Model 3 e preciso de um carregador doméstico.',
-    origin: 'whatsapp',
-    timeline: [
-      { event: 'Primeiro contato', time: '1sem atrás', type: 'in' },
-      { event: 'Proposta enviada', time: '6d atrás', type: 'out' },
-      { event: '✅ Proposta aceita e assinada', time: '5d atrás', type: 'system' },
-    ]
-  },
-  {
-    id: 5, name: 'Carlos Mendes', phone: '(41) 98888-7777',
-    interest: 'Hotel 10 carregadores AC', status: 'new', time: '30min atrás',
-    score: 95, tags: ['hotel', 'alto volume', 'AC', '10 unidades'],
-    firstMsg: 'Sou gerente de um hotel Ibis em Curitiba. Queremos instalar 10 carregadores para os hóspedes como diferencial.',
-    origin: 'instagram',
-    timeline: [
-      { event: 'Primeiro contato via Instagram DM', time: '30min atrás', type: 'in' },
-      { event: '"Sou gerente de um hotel Ibis..."', time: '30min atrás', type: 'in' },
-      { event: 'Lead registrado automaticamente', time: '30min atrás', type: 'system' },
-    ]
-  },
-  {
-    id: 6, name: 'Fernanda Lima', phone: '(11) 94444-3333',
-    interest: 'Shopping 20 vagas EV', status: 'inprogress', time: '5h atrás',
-    score: 88, tags: ['shopping', 'alto volume', 'AC+DC'],
-    firstMsg: 'Somos responsáveis pelo estacionamento de um shopping em São Paulo. Precisamos de 20 pontos de recarga.',
-    origin: 'indicacao',
-    timeline: [
-      { event: 'Indicação de cliente (Ana Costa)', time: '5h atrás', type: 'system' },
-      { event: '"Somos responsáveis pelo estacionamento..."', time: '5h atrás', type: 'in' },
-      { event: 'Primeiro contato do vendedor', time: '4h atrás', type: 'out' },
-    ]
-  },
-  {
-    id: 7, name: 'Roberto Alves', phone: '(19) 98888-1111',
-    interest: 'Condomínio 5 carregadores', status: 'inprogress', time: '2d atrás',
-    score: 74, tags: ['condomínio', 'síndico', '5 carregadores'],
-    firstMsg: 'Sou síndico de um condomínio em Campinas com 80 apartamentos. Temos vários moradores com EVs.',
-    origin: 'site',
-    timeline: [
-      { event: 'Formulário no site preenchido', time: '2d atrás', type: 'system' },
-      { event: '"Sou síndico de um condomínio..."', time: '2d atrás', type: 'in' },
-      { event: 'E-mail de apresentação enviado', time: '2d atrás', type: 'out' },
-      { event: '"Obrigado! Vou passar para a assembleia."', time: '1d atrás', type: 'in' },
-    ]
-  },
-];
 
 // ─── DB Mapping Helpers ───────────────────────────────────────────────────────
 function formatTimeDiff(createdAtStr: string): string {
@@ -180,20 +90,27 @@ const WhatsAppIcon = ({ size = 16, color = '#25D366' }: { size?: number; color?:
   </svg>
 );
 
-// ─── Funnel Stage ─────────────────────────────────────────────────────────────
-const FUNNEL_STAGES = [
-  { label: 'WhatsApp', icon: '📲', count: 42, color: 'from-[#25D366]/20 to-[#25D366]/5', border: 'border-[#25D366]/30', text: 'text-[#128C7E]' },
-  { label: 'Qualificação', icon: '🔍', count: 28, color: 'from-amber-500/20 to-amber-500/5', border: 'border-amber-400/30', text: 'text-amber-700 dark:text-amber-400' },
-  { label: 'Proposta', icon: '📄', count: 18, color: 'from-purple-500/20 to-purple-500/5', border: 'border-purple-400/30', text: 'text-purple-700 dark:text-purple-400' },
-  { label: 'Fechado', icon: '✅', count: 14, color: 'from-[#004D31]/20 to-[#004D31]/5', border: 'border-[#004D31]/30', text: 'text-[#004D31] dark:text-[#B2D235]' },
+// ─── Funil ────────────────────────────────────────────────────────────────────
+// Só aparência: a contagem é calculada sobre os leads em tela.
+// Cada etapa acumula a si mesma e as seguintes — quem já virou proposta passou
+// pela qualificação, então somar só o status atual encolheria o topo do funil.
+const FUNNEL_STAGES: Array<{
+  label: string; icon: string; statuses: LeadStatus[];
+  color: string; border: string; text: string;
+}> = [
+  { label: 'Entrada',      icon: '📲', statuses: ['new', 'inprogress', 'qualified', 'proposal', 'closed'], color: 'from-[#25D366]/20 to-[#25D366]/5', border: 'border-[#25D366]/30', text: 'text-[#128C7E]' },
+  { label: 'Qualificação', icon: '🔍', statuses: ['qualified', 'proposal', 'closed'],                     color: 'from-amber-500/20 to-amber-500/5', border: 'border-amber-400/30', text: 'text-amber-700 dark:text-amber-400' },
+  { label: 'Proposta',     icon: '📄', statuses: ['proposal', 'closed'],                                  color: 'from-purple-500/20 to-purple-500/5', border: 'border-purple-400/30', text: 'text-purple-700 dark:text-purple-400' },
+  { label: 'Fechado',      icon: '✅', statuses: ['closed'],                                              color: 'from-[#004D31]/20 to-[#004D31]/5', border: 'border-[#004D31]/30', text: 'text-[#004D31] dark:text-[#B2D235]' },
 ];
 
-// ─── Source Chart Data ────────────────────────────────────────────────────────
-const SOURCES = [
-  { label: 'WhatsApp Orgânico', pct: 45, color: '#25D366' },
-  { label: 'Instagram Bio', pct: 28, color: '#E1306C' },
-  { label: 'Site EcoCarga', pct: 18, color: '#004D31' },
-  { label: 'Indicação', pct: 9, color: '#B2D235' },
+// ─── Origem dos leads ─────────────────────────────────────────────────────────
+// Idem: rótulo e cor aqui, percentual calculado sobre os leads reais.
+const SOURCE_CONFIG: Array<{ label: string; origin: LeadOrigin; color: string }> = [
+  { label: 'WhatsApp Orgânico', origin: 'whatsapp',  color: '#25D366' },
+  { label: 'Instagram Bio',     origin: 'instagram', color: '#E1306C' },
+  { label: 'Site EcoCarga',     origin: 'site',      color: '#004D31' },
+  { label: 'Indicação',         origin: 'indicacao', color: '#B2D235' },
 ];
 
 // ─── NavItem ─────────────────────────────────────────────────────────────────
@@ -456,7 +373,6 @@ export default function LeadsPage() {
   const { profile, t } = useApp();
   const router = useRouter();
 
-  // Use real Supabase hook — falls back to MOCK_LEADS if table is empty
   const { leads: dbLeads, loading, updateLead } = useLeads();
 
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -471,19 +387,35 @@ export default function LeadsPage() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  // Sync real DB leads → local state, with mock fallback
+  // Funil e origens saem dos leads em tela, não de constantes. Antes eram
+  // números fixos no código (42 / 28 / 18 / 14 e 45% / 28% / 18% / 9%), que
+  // continuavam iguais com o banco vazio ou cheio.
+  const funil = useMemo(
+    () => FUNNEL_STAGES.map(etapa => ({
+      ...etapa,
+      count: leads.filter(l => etapa.statuses.includes(l.status)).length,
+    })),
+    [leads]
+  );
+
+  const origens = useMemo(() => {
+    const total = leads.length;
+    return SOURCE_CONFIG.map(src => {
+      const n = leads.filter(l => l.origin === src.origin).length;
+      return { ...src, n, pct: total > 0 ? Math.round((n / total) * 100) : 0 };
+    });
+  }, [leads]);
+
+  // Leads reais do banco. Sem fallback: antes, com a tabela vazia, o funil
+  // enchia de leads fictícios e o vendedor via oportunidades que não existem —
+  // gente para ligar que nunca escreveu.
   useEffect(() => {
     if (!loading) {
-      if (dbLeads.length > 0) {
-        setLeads(dbLeads.map(l => ({
-          ...l,
-          firstMsg: l.first_msg || '',
-          time: l.created_at ? formatTimeDiff(l.created_at) : 'agora mesmo',
-        } as Lead)));
-      } else {
-        // No DB leads yet — use mock data for demonstration
-        setLeads(MOCK_LEADS);
-      }
+      setLeads(dbLeads.map(l => ({
+        ...l,
+        firstMsg: l.first_msg || '',
+        time: l.created_at ? formatTimeDiff(l.created_at) : 'agora mesmo',
+      } as Lead)));
     }
   }, [dbLeads, loading]);
 
@@ -655,7 +587,7 @@ export default function LeadsPage() {
               <span className="text-xs text-gray-400">Últimos 30 dias</span>
             </div>
             <div className="flex items-center gap-0">
-              {FUNNEL_STAGES.map((stage, i) => (
+              {funil.map((stage, i) => (
                 <React.Fragment key={stage.label}>
                   <motion.div
                     initial={{ opacity: 0, scale: 0.9 }}
@@ -666,13 +598,15 @@ export default function LeadsPage() {
                     <p className="text-2xl mb-1">{stage.icon}</p>
                     <p className={`text-3xl font-black ${stage.text}`}>{stage.count}</p>
                     <p className="text-xs font-bold text-gray-500 dark:text-gray-400 mt-1">{stage.label}</p>
-                    {i > 0 && (
+                    {/* Sem etapa anterior não há conversão a mostrar — dividir por
+                        zero renderizaria "NaN% conv." na tela. */}
+                    {i > 0 && funil[i - 1].count > 0 && (
                       <p className="text-[10px] font-bold text-gray-400 mt-1">
-                        {Math.round((stage.count / FUNNEL_STAGES[i-1].count) * 100)}% conv.
+                        {Math.round((stage.count / funil[i - 1].count) * 100)}% conv.
                       </p>
                     )}
                   </motion.div>
-                  {i < FUNNEL_STAGES.length - 1 && (
+                  {i < funil.length - 1 && (
                     <div className="flex flex-col items-center px-1 text-gray-300 dark:text-gray-600">
                       <ChevronRight size={22} strokeWidth={1.5} />
                     </div>
@@ -768,7 +702,7 @@ export default function LeadsPage() {
           >
             <h2 className="font-black text-gray-900 dark:text-white text-sm uppercase tracking-wider mb-5">Origem dos Leads</h2>
             <div className="space-y-3">
-              {SOURCES.map((src, i) => (
+              {origens.map((src, i) => (
                 <div key={src.label} className="flex items-center gap-3">
                   <span className="w-28 text-xs font-semibold text-gray-600 dark:text-gray-400 text-right flex-shrink-0">{src.label}</span>
                   <div className="flex-1 h-6 bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden">
@@ -779,10 +713,16 @@ export default function LeadsPage() {
                       animate={{ width: `${src.pct}%` }}
                       transition={{ duration: 0.7, delay: 0.4 + i * 0.08, ease: 'easeOut' }}
                     >
-                      <span className="text-[10px] font-black text-white whitespace-nowrap">{src.pct}%</span>
+                      {/* Abaixo de ~12% o número não cabe dentro da barra e sai
+                          cortado; nesses casos fica só o de fora. */}
+                      {src.pct >= 12 && (
+                        <span className="text-[10px] font-black text-white whitespace-nowrap">{src.pct}%</span>
+                      )}
                     </motion.div>
                   </div>
-                  <span className="text-xs font-bold text-gray-400 w-8">{src.pct}%</span>
+                  <span className="text-xs font-bold text-gray-400 w-14 whitespace-nowrap">
+                    {src.pct}% <span className="opacity-60">({src.n})</span>
+                  </span>
                 </div>
               ))}
             </div>
