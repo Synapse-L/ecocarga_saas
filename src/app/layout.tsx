@@ -4,6 +4,7 @@ import "./globals.css";
 import { AppProvider } from "@/context/AppContext";
 import { ToastProvider } from "@/components/Toast";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
+import { AuthGuard } from "@/components/AuthGuard";
 import KeplerAssistant from "@/components/ai/KeplerAssistant";
 
 const geistSans = Geist({
@@ -77,8 +78,10 @@ export default function RootLayout({
         <AppProvider>
           <ToastProvider>
             <ConfirmProvider>
-              {children}
-              <KeplerAssistant />
+              <AuthGuard>
+                {children}
+                <KeplerAssistant />
+              </AuthGuard>
             </ConfirmProvider>
           </ToastProvider>
         </AppProvider>
