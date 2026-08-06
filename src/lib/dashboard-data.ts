@@ -439,12 +439,22 @@ export const getDashboardStats = async (
   // este conta os produtos um a um, com quantidade — que é o que responde
   // "qual carregador mais vende".
   const chargerRanking = montarRankingCarregadores(allProposals, itensVendidos);
+
+  // Ordenado pelo PROPOSTO, não pelo vendido. Com pouca proposta fechada — que
+  // é o caso comum — ordenar por venda deixaria o gráfico praticamente vazio e
+  // em ordem arbitrária. O proposto é sempre maior ou igual ao vendido, então
+  // serve de escala para os dois.
   const chargerRankingPorUnidades = [...chargerRanking]
-    .sort((a, b) => b.unidades - a.unidades || b.receita - a.receita)
+    .sort((a, b) => b.unidadesPropostas - a.unidadesPropostas || b.unidades - a.unidades)
     .slice(0, 6);
-  const chargerRankingPorReceita = chargerRanking.slice(0, 6);
+  const chargerRankingPorReceita = [...chargerRanking]
+    .sort((a, b) => b.receitaProposta - a.receitaProposta || b.receita - a.receita)
+    .slice(0, 6);
+
   const totalUnidadesVendidas = chargerRanking.reduce((s, c) => s + c.unidades, 0);
   const receitaTotalVendida = chargerRanking.reduce((s, c) => s + c.receita, 0);
+  const totalUnidadesPropostas = chargerRanking.reduce((s, c) => s + c.unidadesPropostas, 0);
+  const receitaTotalProposta = chargerRanking.reduce((s, c) => s + c.receitaProposta, 0);
 
   // 13. IA Insights dinâmicos (Gemini)
   const insights: Array<{ type: string; title: string; description: string }> = [];
@@ -566,7 +576,9 @@ export const getDashboardStats = async (
     vendasPorCarregador: {
       ranking: chargerRanking,
       totalUnidades: totalUnidadesVendidas,
-      receitaTotal: receitaTotalVendida
+      receitaTotal: receitaTotalVendida,
+      totalUnidadesPropostas,
+      receitaTotalProposta
     },
     market: {
       proposedChargers,

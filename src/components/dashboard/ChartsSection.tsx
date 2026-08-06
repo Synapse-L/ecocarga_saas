@@ -109,18 +109,29 @@ function MarketStatCard({
 }
 
 /**
- * Ranking horizontal de carregadores.
+ * Ranking horizontal de carregadores, proposto contra fechado.
  *
  * As barras são deitadas porque o rótulo é o nome do produto — em pé, "Eco
  * SuperFast DC 40kW" ou vira reticências ou vira texto na diagonal.
+ *
+ * As duas séries juntas são o ponto: sozinho, o fechado costuma ser um punhado
+ * de barras curtas que não dizem nada. Ao lado do proposto, a distância entre
+ * as duas é a informação — qual carregador entra em muita proposta e não
+ * converte, e qual converte quase tudo que é oferecido.
+ *
+ * `proposto` inclui o que foi fechado (é o total oferecido, não o saldo em
+ * aberto), e a legenda diz isso.
  */
 function RankingCarregadores({
   titulo,
   etiqueta,
   dados,
-  dataKey,
-  nomeSerie,
-  cor,
+  chaveProposto,
+  chaveFechado,
+  nomeProposto,
+  nomeFechado,
+  corProposto,
+  corFechado,
   vazio,
   gridStroke,
   textFill,
@@ -130,9 +141,12 @@ function RankingCarregadores({
   titulo: string;
   etiqueta: string;
   dados: any[];
-  dataKey: string;
-  nomeSerie: string;
-  cor: string;
+  chaveProposto: string;
+  chaveFechado: string;
+  nomeProposto: string;
+  nomeFechado: string;
+  corProposto: string;
+  corFechado: string;
   vazio: boolean;
   gridStroke: string;
   textFill: string;
@@ -158,10 +172,10 @@ function RankingCarregadores({
           <div className="h-full flex flex-col items-center justify-center text-center px-6">
             <PackageSearch className="text-gray-300 dark:text-slate-700 mb-3" size={32} />
             <p className="text-xs font-bold text-gray-400 dark:text-slate-500">
-              Nenhuma proposta fechada ainda
+              Nenhum carregador proposto ainda
             </p>
             <p className="text-[11px] text-gray-400 dark:text-slate-600 mt-1 max-w-[16rem]">
-              O ranking aparece assim que o primeiro negócio for marcado como concluído.
+              O ranking aparece com a primeira proposta que tiver produto.
             </p>
           </div>
         ) : (
@@ -183,15 +197,54 @@ function RankingCarregadores({
                 tickFormatter={(v: string) => (v.length > 26 ? `${v.slice(0, 25)}…` : v)}
               />
               <Tooltip content={tooltip} cursor={{ fill: 'transparent' }} />
+              <Legend iconType="circle" wrapperStyle={{ fontSize: 10, paddingTop: 8 }} />
               {/* Sem rótulo em cima da barra: no recharts 3.8 ele não sai nesta
                   combinação de layout deitado com camadas de z-index. O número
                   exato continua no tooltip, e a escala fica no eixo. */}
-              <Bar dataKey={dataKey} name={nomeSerie} fill={cor} radius={[0, 4, 4, 0]} barSize={18} />
+              <Bar dataKey={chaveProposto} name={nomeProposto} fill={corProposto} radius={[0, 4, 4, 0]} barSize={10} />
+              <Bar dataKey={chaveFechado} name={nomeFechado} fill={corFechado} radius={[0, 4, 4, 0]} barSize={10} />
             </BarChart>
           </ResponsiveContainer>
         )}
       </div>
     </motion.div>
+  );
+}
+
+/** Quanto do que foi oferecido virou negócio. */
+function ConversaoCard({
+  titulo,
+  fechado,
+  proposto,
+  formatar,
+}: {
+  titulo: string;
+  fechado: number;
+  proposto: number;
+  formatar: (v: number) => string;
+}) {
+  const pct = proposto > 0 ? (fechado / proposto) * 100 : 0;
+
+  return (
+    <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-[10px] font-black uppercase text-gray-400 dark:text-slate-500 tracking-wider">
+          {titulo}
+        </span>
+        <span className="text-lg font-black text-gray-900 dark:text-white">{pct.toFixed(0)}%</span>
+      </div>
+
+      <div className="h-2 bg-gray-100 dark:bg-slate-800 rounded-full overflow-hidden mt-3">
+        <div
+          className="h-full bg-primary dark:bg-accent rounded-full transition-all"
+          style={{ width: `${Math.min(pct, 100)}%` }}
+        />
+      </div>
+
+      <p className="text-[10px] text-gray-400 dark:text-slate-500 font-medium mt-2">
+        {formatar(fechado)} fechado de {formatar(proposto)} proposto
+      </p>
+    </div>
   );
 }
 
@@ -209,10 +262,14 @@ export function ChartsSection({ stats, theme }: ChartsSectionProps) {
   const gridStroke = isDark ? '#1f2937' : '#e2e8f0';
   const textFill = isDark ? '#94a3b8' : '#64748b';
 
-  // O ranking conta só o que foi vendido de fato. Sem nenhuma proposta fechada
-  // ele seria um gráfico de barras zeradas, que parece defeito — melhor dizer
-  // que ainda não há venda.
-  const semVendas = (stats.vendasPorCarregador?.totalUnidades ?? 0) === 0;
+  // O gráfico esconde só quando não há NADA proposto. Zero venda com proposta
+  // no funil não é ausência de dado — é justamente a informação que ele mostra.
+  const semDados = (stats.vendasPorCarregador?.totalUnidadesPropostas ?? 0) === 0;
+
+  // Proposto em tom neutro, fechado na cor da marca: a barra que importa é a
+  // que fecha, e a outra serve de escala atrás dela.
+  const corProposto = isDark ? '#475569' : '#cbd5e1';
+  const corFechado = isDark ? '#B2D235' : '#004D31';
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
@@ -442,16 +499,19 @@ export function ChartsSection({ stats, theme }: ChartsSectionProps) {
         </motion.div>
       </div>
 
-      {/* Section 3: Qual carregador mais vende */}
+      {/* Section 3: Qual carregador mais vende — proposto contra fechado */}
       <div data-tour="ranking-carregadores" className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <RankingCarregadores
-          titulo="Carregadores Mais Vendidos"
-          etiqueta="Unidades fechadas"
+          titulo="Unidades por Carregador"
+          etiqueta="Proposto vs. fechado"
           dados={stats.charts.chargerRankingPorUnidades ?? []}
-          dataKey="unidades"
-          nomeSerie="Unidades"
-          cor="#B2D235"
-          vazio={semVendas}
+          chaveProposto="unidadesPropostas"
+          chaveFechado="unidades"
+          nomeProposto="Unidades propostas"
+          nomeFechado="Unidades fechadas"
+          corProposto={corProposto}
+          corFechado={corFechado}
+          vazio={semDados}
           gridStroke={gridStroke}
           textFill={textFill}
           tooltip={<CustomTooltip />}
@@ -459,18 +519,40 @@ export function ChartsSection({ stats, theme }: ChartsSectionProps) {
         />
         <RankingCarregadores
           titulo="Receita por Carregador"
-          etiqueta="Propostas fechadas"
+          etiqueta="Proposto vs. fechado"
           dados={stats.charts.chargerRankingPorReceita ?? []}
-          dataKey="receita"
-          nomeSerie="Receita"
-          cor="#004D31"
-          vazio={semVendas}
+          chaveProposto="receitaProposta"
+          chaveFechado="receita"
+          nomeProposto="Receita proposta"
+          nomeFechado="Receita fechada"
+          corProposto={corProposto}
+          corFechado={corFechado}
+          vazio={semDados}
           gridStroke={gridStroke}
           textFill={textFill}
           tooltip={<CustomTooltip />}
           delay={0.2}
         />
       </div>
+
+      {/* Taxa de conversão do que é oferecido — a leitura que os dois gráficos
+          acima sugerem, dita em número. */}
+      {!semDados && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 -mt-2">
+          <ConversaoCard
+            titulo="Conversão em unidades"
+            fechado={stats.vendasPorCarregador?.totalUnidades ?? 0}
+            proposto={stats.vendasPorCarregador?.totalUnidadesPropostas ?? 0}
+            formatar={(v) => `${v}`}
+          />
+          <ConversaoCard
+            titulo="Conversão em receita"
+            fechado={stats.vendasPorCarregador?.receitaTotal ?? 0}
+            proposto={stats.vendasPorCarregador?.receitaTotalProposta ?? 0}
+            formatar={(v) => `R$ ${v.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`}
+          />
+        </div>
+      )}
 
       {/* Section 4: Mercado de Mobilidade Elétrica */}
       <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-gray-100 dark:border-slate-800 shadow-sm transition-colors duration-300">
