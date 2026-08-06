@@ -22,9 +22,13 @@ import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import AppSidebar from '@/components/AppSidebar';
+import { useToast } from '@/components/Toast';
+import { useConfirm } from '@/components/ConfirmDialog';
 
 export default function ModelsPage() {
   const { profile, t } = useApp();
+  const toast = useToast();
+  const confirmar = useConfirm();
   const [models, setModels] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -110,7 +114,7 @@ export default function ModelsPage() {
     // Modelos de fábrica (user_id NULL) são compartilhados por todos os vendedores,
     // então só o admin pode alterá-los — inclusive para anexar a foto do carregador.
     if (global && !isAdmin) {
-      alert('Modelos de fábrica só podem ser editados por um administrador.');
+      toast('Modelos de fábrica só podem ser editados por um administrador.', 'error');
       return;
     }
     setEditingIsGlobal(global);
@@ -130,14 +134,26 @@ export default function ModelsPage() {
 
   const handleDelete = async (id: string, isGlobal: boolean) => {
     if (isGlobal && !isAdmin) {
-      alert('Modelos de fábrica só podem ser excluídos por um administrador.');
+      toast('Modelos de fábrica só podem ser excluídos por um administrador.', 'error');
       return;
     }
-    if (!confirm(
+
+    const confirmado = await confirmar(
       isGlobal
-        ? 'Este é um modelo de FÁBRICA, compartilhado por todos os vendedores.\n\nExcluir vai removê-lo para toda a equipe. Deseja continuar?'
-        : 'Deseja realmente excluir este modelo de carregador?'
-    )) return;
+        ? {
+            title: 'Excluir modelo de fábrica?',
+            description: 'Ele é compartilhado por todos os vendedores, e a exclusão remove o modelo para a equipe inteira.',
+            confirmLabel: 'Excluir para todos',
+            destructive: true,
+          }
+        : {
+            title: 'Excluir este modelo?',
+            description: 'O carregador sai do seu catálogo. Propostas já emitidas não mudam.',
+            confirmLabel: 'Excluir',
+            destructive: true,
+          }
+    );
+    if (!confirmado) return;
 
     try {
       const { error, count } = await supabase
@@ -150,14 +166,15 @@ export default function ModelsPage() {
       // O RLS pode recusar silenciosamente (0 linhas afetadas, sem erro):
       // avisa em vez de sumir com o card e deixar o banco intacto.
       if (count === 0) {
-        alert('Nada foi excluído — seu usuário não tem permissão para remover este modelo no banco de dados.');
+        toast('Nada foi excluído — seu usuário não tem permissão para remover este modelo.', 'error');
         return;
       }
 
       setModels(models.filter(m => m.id !== id));
+      toast('Modelo excluído.', 'success');
     } catch (err) {
       console.error(err);
-      alert('Erro ao excluir modelo.');
+      toast('Erro ao excluir modelo.', 'error');
     }
   };
 
@@ -226,7 +243,7 @@ export default function ModelsPage() {
 
         if (error) throw error;
         if (count === 0) {
-          alert('Nada foi salvo — seu usuário não tem permissão para editar este modelo no banco de dados.');
+          toast('Nada foi salvo — seu usuário não tem permissão para editar este modelo.', 'error');
           return;
         }
       } else {
@@ -246,7 +263,9 @@ export default function ModelsPage() {
       // Erro de RLS no Storage é o caso mais comum e o mais críptico:
       // traduz para uma instrução acionável em vez de "Erro ao salvar modelo."
       if (/row-level security|violates row-level/i.test(msg)) {
-        alert(
+        // O passo a passo de qual migração rodar não cabe num toast e sumiria
+        // antes de ser lido, então vai inteiro para o console.
+        console.error(
           'O banco de dados recusou a gravação (regra de segurança).\n\n' +
           'Se o erro cita "storage", falta liberar o upload no bucket: rode o ' +
           'arquivo migration_fix_storage_upload.sql no SQL Editor do Supabase.\n\n' +
@@ -254,8 +273,9 @@ export default function ModelsPage() {
           'de fábrica: rode migration_admin_manage_global_models.sql.\n\n' +
           `Detalhe técnico: ${msg}`
         );
+        toast('O banco recusou a gravação por regra de segurança. O console diz qual migração falta.', 'error');
       } else {
-        alert(`Erro ao salvar modelo.\n\n${msg}`);
+        toast(`Erro ao salvar modelo: ${msg}`, 'error');
       }
     } finally {
       setSaving(false);

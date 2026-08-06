@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AppProvider } from "@/context/AppContext";
 import { ToastProvider } from "@/components/Toast";
+import { ConfirmProvider } from "@/components/ConfirmDialog";
 import KeplerAssistant from "@/components/ai/KeplerAssistant";
 
 const geistSans = Geist({
@@ -75,8 +76,10 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <AppProvider>
           <ToastProvider>
-            {children}
-            <KeplerAssistant />
+            <ConfirmProvider>
+              {children}
+              <KeplerAssistant />
+            </ConfirmProvider>
           </ToastProvider>
         </AppProvider>
       </body>

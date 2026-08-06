@@ -10,8 +10,10 @@ import {
   Wrench, CheckCircle2, AlertCircle, X, ChevronRight, MessageSquare, Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useRouter } from 'next/navigation';
 import AppSidebar from '@/components/AppSidebar';
 import { useApp } from '@/context/AppContext';
+import { useToast } from '@/components/Toast';
 import { supabase } from '@/lib/supabase';
 
 // --- DB Mapping Helpers ---
@@ -200,6 +202,8 @@ const POTENTIAL_CONFIG: Record<BusinessPotential, { label: string; bg: string; t
 
 export default function ClientsPage() {
   const { t } = useApp();
+  const toast = useToast();
+  const router = useRouter();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -322,7 +326,7 @@ export default function ClientsPage() {
         setSelectedClient({ ...selectedClient, potential });
       }
     } catch (err: any) {
-      alert('Erro ao atualizar potencial: ' + err.message);
+      toast('Erro ao atualizar potencial: ' + err.message, 'error');
     }
   };
 
@@ -367,7 +371,7 @@ export default function ClientsPage() {
       setNewClientSegment('condominio');
       setNewClientPotential('morno');
     } catch (err: any) {
-      alert('Erro ao cadastrar cliente: ' + err.message);
+      toast('Erro ao cadastrar cliente: ' + err.message, 'error');
     }
   };
 
@@ -801,7 +805,16 @@ export default function ClientsPage() {
                     Contatar WhatsApp
                   </a>
                   <button 
-                    onClick={() => alert(`Iniciando proposta mock para ${selectedClient.name}`)}
+                    // O formulário de proposta lê name/phone/address da query,
+                    // então o cliente já chega preenchido. Antes o botão só
+                    // abria um alert dizendo "proposta mock".
+                    onClick={() => router.push(
+                      '/proposals/new?' + new URLSearchParams({
+                        name: selectedClient.name ?? '',
+                        phone: selectedClient.phone ?? '',
+                        address: selectedClient.address ?? '',
+                      }).toString()
+                    )}
                     className="flex-1 bg-[#004D31] dark:bg-[#B2D235] text-white dark:text-[#004D31] py-3 rounded-2xl text-xs font-bold transition-all hover:opacity-90 active:scale-[0.98] cursor-pointer"
                   >
                     Nova Proposta

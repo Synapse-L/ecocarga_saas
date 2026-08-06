@@ -12,6 +12,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import AppSidebar from '@/components/AppSidebar';
 import { useApp } from '@/context/AppContext';
+import { useToast } from '@/components/Toast';
 
 // --- Types ---
 interface FunnelStage {
@@ -67,6 +68,7 @@ const MOCK_ANOMALIES = [
 
 export default function ReportsPage() {
   const { t } = useApp();
+  const toast = useToast();
   const [dateRange, setDateRange] = useState('este-mes');
   const [exportingPDF, setExportingPDF] = useState(false);
   const [exportingWA, setExportingWA] = useState(false);
@@ -89,7 +91,7 @@ export default function ReportsPage() {
       link.click();
       document.body.removeChild(link);
       
-      alert('Relatório Executivo PDF compilado e baixado com sucesso!');
+      toast('Relatório executivo compilado e baixado.', 'success');
     }, 1500);
   };
 
@@ -98,7 +100,7 @@ export default function ReportsPage() {
     setExportingWA(true);
     setTimeout(() => {
       setExportingWA(false);
-      alert('Resumo semanal compilado e enviado diretamente para o WhatsApp do Gestor cadastrado!');
+      toast('Resumo semanal enviado para o WhatsApp do gestor.', 'success');
     }, 1200);
   };
 

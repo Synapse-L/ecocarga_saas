@@ -12,6 +12,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCommissions } from '@/hooks/useCommissions';
 import { useApp } from '@/context/AppContext';
+import { useToast } from '@/components/Toast';
 import AppSidebar from '@/components/AppSidebar';
 
 // --- Types ---
@@ -61,6 +62,7 @@ const PRODUCT_CATEGORIES = [
 
 export default function CommissionsPage() {
   const { t } = useApp();
+  const toast = useToast();
     const [activeTab, setActiveTab] = useState<ActiveTab>('vendedor');
 
   const { 
@@ -528,7 +530,7 @@ export default function CommissionsPage() {
 
                       <button 
                         onClick={() => {
-                          alert('Taxas globais salvas e atualizadas para propostas futuras!');
+                          toast('Taxas globais salvas para propostas futuras.', 'success');
                         }}
                         className="w-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-gray-700 dark:text-white py-3 rounded-2xl text-xs font-black transition-all cursor-pointer mt-4 border border-gray-200/20"
                       >

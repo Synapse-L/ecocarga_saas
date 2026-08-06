@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useApp } from '@/context/AppContext';
+import { useToast } from '@/components/Toast';
 
 // --- Types ---
 interface Message {
@@ -23,6 +24,7 @@ interface Message {
 
 export default function ClientPortalPage() {
   const { theme } = useApp();
+  const toast = useToast();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [emailInput, setEmailInput] = useState('');
   const [loginStep, setLoginStep] = useState<'email' | 'otp'>('email');
@@ -390,7 +392,7 @@ export default function ClientPortalPage() {
 
                     <div className="flex gap-2 pt-1">
                       <button 
-                        onClick={() => alert('Baixando PDF da proposta homologada...')}
+                        onClick={() => toast('Baixando o PDF da proposta homologada...', 'info')}
                         className="flex-1 bg-neutral-900 hover:bg-neutral-850 border border-neutral-800 text-neutral-300 py-2.5 rounded-xl font-bold transition-all flex items-center justify-center gap-1.5 text-[10px] cursor-pointer"
                       >
                         <Download size={12} />
@@ -429,7 +431,7 @@ export default function ClientPortalPage() {
                         <span className="text-[9px] text-neutral-500 font-medium">Emitido por EcoCarga Engenharia</span>
                       </div>
                       <button 
-                        onClick={() => alert('Download do laudo elétrico homologado')}
+                        onClick={() => toast('Baixando o laudo elétrico homologado...', 'info')}
                         className="p-2 bg-neutral-900 hover:bg-neutral-850 border border-neutral-800 rounded-lg text-neutral-300 transition-colors"
                       >
                         <Download size={14} />

@@ -3,9 +3,11 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, CheckCircle2, PenLine, AlertCircle, Zap, Calendar, DollarSign, User } from 'lucide-react';
+import { useToast } from '@/components/Toast';
 
 export default function PublicProposalPage({ params }: { params: { token: string } }) {
   const { token } = params;
+  const toast = useToast();
 
   const [proposal, setProposal] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -103,7 +105,7 @@ export default function PublicProposalPage({ params }: { params: { token: string
       if (!res.ok) throw new Error(data.error);
       setPhase('done');
     } catch (err: any) {
-      alert(err.message || 'Erro ao assinar. Tente novamente.');
+      toast(err.message || 'Erro ao assinar. Tente novamente.', 'error');
     } finally {
       setSigning(false);
     }

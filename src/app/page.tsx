@@ -45,6 +45,7 @@ import { useApp } from '@/context/AppContext';
 import { getDashboardStats, DashboardProposal } from '@/lib/dashboard-data';
 import { buscarItensVendidos, gravarItensDaProposta, ItemVendido } from '@/lib/proposal-items';
 import { useToast } from '@/components/Toast';
+import { useConfirm } from '@/components/ConfirmDialog';
 import { OnboardingTour, useOnboarding } from '@/components/OnboardingTour';
 import AppSidebar from '@/components/AppSidebar';
 import { ShortcutsModal } from '@/components/dashboard/ShortcutsModal';
@@ -83,6 +84,7 @@ type ReorderPage = {
 export default function Dashboard() {
   const { profile, t, theme } = useApp();
   const toast = useToast();
+  const confirmar = useConfirm();
   const { restart: restartOnboarding } = useOnboarding();
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -296,10 +298,11 @@ export default function Dashboard() {
       } catch (err: unknown) {
         console.error(err);
         const msg = err instanceof Error ? err.message : String(err);
-        alert(
+        toast(
           /demorou mais de/.test(msg)
-            ? `${msg}\n\nIsso costuma ser o modelo de proposta (template) grande ou uma conexão lenta. Tente de novo.`
-            : `Erro ao visualizar PDF.\n\n${msg}`
+            ? `${msg} Costuma ser template grande ou conexão lenta — tente de novo.`
+            : `Erro ao visualizar PDF: ${msg}`,
+          'error'
         );
       } finally {
         setViewingId(null);
@@ -337,12 +340,18 @@ export default function Dashboard() {
       fetchDashboardData();
     } catch (err) {
       console.error('Erro ao duplicar proposta:', err);
-      alert('Erro ao duplicar proposta');
+      toast('Erro ao duplicar proposta.', 'error');
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Deseja realmente excluir esta proposta?')) return;
+    const confirmado = await confirmar({
+      title: 'Excluir esta proposta?',
+      description: 'A proposta e os itens dela saem do histórico e da análise de vendas. Não dá para desfazer.',
+      confirmLabel: 'Excluir',
+      destructive: true,
+    });
+    if (!confirmado) return;
     
     // Support local mock data updating
     if (id.toString().startsWith('mock-')) {
@@ -521,7 +530,7 @@ export default function Dashboard() {
         sessionStorage.setItem('dashboardStats', JSON.stringify(previousStats));
         window.dispatchEvent(new Event('dashboardStatsUpdated'));
       }
-      alert('Erro ao atualizar status. Movimento desfeito.');
+      toast('Erro ao atualizar status. Movimento desfeito.', 'error');
     }
   };
 
@@ -605,7 +614,7 @@ export default function Dashboard() {
             );
           } catch (err) {
             console.error(err);
-            alert('Erro ao gerar PDF');
+            toast('Erro ao gerar PDF.', 'error');
           } finally {
             setDownloadingId(null);
           }
@@ -661,7 +670,7 @@ export default function Dashboard() {
       setReorderPages(initialPages);
     } catch (err) {
       console.error('Erro ao ler páginas do template:', err);
-      alert('Erro ao carregar páginas do modelo');
+      toast('Erro ao carregar páginas do modelo.', 'error');
       setIsReorderModalOpen(false);
     } finally {
       setLoadingPages(false);
@@ -699,10 +708,11 @@ export default function Dashboard() {
       } catch (err: unknown) {
         console.error(err);
         const msg = err instanceof Error ? err.message : String(err);
-        alert(
+        toast(
           /demorou mais de/.test(msg)
-            ? `${msg}\n\nIsso costuma ser o modelo de proposta (template) grande ou uma conexão lenta. Tente de novo.`
-            : `Erro ao gerar o PDF.\n\n${msg}`
+            ? `${msg} Costuma ser template grande ou conexão lenta — tente de novo.`
+            : `Erro ao gerar o PDF: ${msg}`,
+          'error'
         );
       } finally {
         setDownloadingId(null);
@@ -926,7 +936,7 @@ export default function Dashboard() {
       document.body.removeChild(link);
     } catch (error) {
       console.error('Erro ao gerar relatório Excel:', error);
-      alert('Erro ao gerar arquivo Excel. Exportando em formato de fallback CSV...');
+      toast('Erro ao gerar o Excel. Exportando em CSV.', 'error');
       handleExportCSVFallback();
     }
   };

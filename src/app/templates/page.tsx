@@ -15,9 +15,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
+import { useToast } from '@/components/Toast';
+import { useConfirm } from '@/components/ConfirmDialog';
 
 export default function TemplatesPage() {
   const { t } = useApp();
+  const toast = useToast();
+  const confirmar = useConfirm();
   const [templates, setTemplates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -82,24 +86,32 @@ export default function TemplatesPage() {
       fetchTemplates();
     } catch (err) {
       console.error(err);
-      alert('Erro ao fazer upload do template');
+      toast('Erro ao fazer upload do template.', 'error');
     } finally {
       setUploading(false);
     }
   };
 
   const handleDelete = async (id: string, fileUrl: string) => {
-    if (!confirm(t('confirmDeleteTemplate'))) return;
+    const confirmado = await confirmar({
+      title: 'Excluir este template?',
+      description: t('confirmDeleteTemplate'),
+      confirmLabel: 'Excluir',
+      destructive: true,
+    });
+    if (!confirmado) return;
 
     try {
       // 1. Delete from storage (simplified path extraction)
       // Note: Ideally extract exact path from URL
-      
+
       // 2. Delete from DB
       await supabase.from('templates').delete().eq('id', id);
       fetchTemplates();
+      toast('Template excluído.', 'success');
     } catch (err) {
       console.error(err);
+      toast('Erro ao excluir o template.', 'error');
     }
   };
 
