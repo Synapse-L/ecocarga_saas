@@ -83,6 +83,20 @@ type ReorderPage = {
   index: number | null;
 };
 
+const buildPageOrder = (pageCount: number) => {
+  const pageOrder: Array<{ type: 'template' | 'saas-cover' | 'saas-page6'; index?: number }> = [];
+
+  pageOrder.push({ type: 'saas-cover' as const });
+
+  for (let i = 0; i < pageCount; i++) {
+    pageOrder.push({ type: 'template' as const, index: i });
+  }
+
+  pageOrder.push({ type: 'saas-page6' as const });
+
+  return pageOrder;
+};
+
 export default function Dashboard() {
   const { profile, t, theme } = useApp();
   const toast = useToast();
@@ -272,20 +286,8 @@ export default function Dashboard() {
           await PDFService.viewQuoteOnly(quoteData);
         } else {
           const pageCount = await PDFService.getTemplatePageCount(templateUrl);
-          const pageOrder: Array<{ type: 'template' | 'saas-cover' | 'saas-page6'; index?: number }> = [];
+          const pageOrder = buildPageOrder(pageCount);
 
-          pageOrder.push({ type: 'saas-cover' as const });
-
-          for (let i = 1; i < Math.min(5, pageCount); i++) {
-            pageOrder.push({ type: 'template' as const, index: i });
-          }
-
-          pageOrder.push({ type: 'saas-page6' as const });
-
-          for (let i = 6; i < pageCount; i++) {
-            pageOrder.push({ type: 'template' as const, index: i });
-          }
-          
           await PDFService.viewCustomOrderedPdf(
             templateUrl,
             'proposal-cover',
@@ -630,7 +632,7 @@ export default function Dashboard() {
 
       const pageCount = await PDFService.getTemplatePageCount(templateUrl);
       const initialPages: ReorderPage[] = [];
-      
+
       initialPages.push({
         id: 'saas-cover',
         type: 'saas-cover',
@@ -638,7 +640,7 @@ export default function Dashboard() {
         index: null
       });
 
-      for (let i = 1; i < Math.min(5, pageCount); i++) {
+      for (let i = 0; i < pageCount; i++) {
         initialPages.push({
           id: `template-${i}`,
           type: 'template',
@@ -653,15 +655,6 @@ export default function Dashboard() {
         label: `${t('techSpecsPage6')} (SaaS)`,
         index: null
       });
-
-      for (let i = 6; i < pageCount; i++) {
-        initialPages.push({
-          id: `template-${i}`,
-          type: 'template',
-          label: `${t('templatePageLabel')} ${i + 1}`,
-          index: i
-        });
-      }
 
       setReorderPages(initialPages);
     } catch (err) {
