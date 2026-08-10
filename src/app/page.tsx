@@ -48,6 +48,7 @@ import { buscarItensVendidos, gravarItensDaProposta, ItemVendido } from '@/lib/p
 import { useToast } from '@/components/Toast';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { OnboardingTour, useOnboarding } from '@/components/OnboardingTour';
+import { resolveDefaultTemplateUrl } from '@/lib/templates';
 import AppSidebar from '@/components/AppSidebar';
 import { ShortcutsModal } from '@/components/dashboard/ShortcutsModal';
 import { ChartsSection } from '@/components/dashboard/ChartsSection';
@@ -257,16 +258,9 @@ export default function Dashboard() {
     setTimeout(async () => {
       try {
         let templateUrl = proposal.template?.file_url;
-        
-        // Fallback: If no template is linked to the proposal, fetch the default one from the database
+
         if (!templateUrl) {
-          const { data: dbTemplates } = await supabase
-            .from('templates')
-            .select('file_url, is_default');
-          if (dbTemplates && dbTemplates.length > 0) {
-            const chosen = dbTemplates.find(t => t.is_default) || dbTemplates[0];
-            templateUrl = chosen.file_url;
-          }
+          templateUrl = await resolveDefaultTemplateUrl(supabase, userId);
         }
 
         // A página de valores é desenhada nativamente; o componente que antes
@@ -604,16 +598,9 @@ export default function Dashboard() {
 
     try {
       let templateUrl = proposal.template?.file_url;
-      
-      // Fallback: If no template is linked to the proposal, fetch the default one from the database
+
       if (!templateUrl) {
-        const { data: dbTemplates } = await supabase
-          .from('templates')
-          .select('file_url, is_default');
-        if (dbTemplates && dbTemplates.length > 0) {
-          const chosen = dbTemplates.find(t => t.is_default) || dbTemplates[0];
-          templateUrl = chosen.file_url;
-        }
+        templateUrl = await resolveDefaultTemplateUrl(supabase, userId);
       }
 
       if (!templateUrl) {

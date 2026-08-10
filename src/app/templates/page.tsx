@@ -73,15 +73,38 @@ export default function TemplatesPage() {
         .from('templates')
         .getPublicUrl(fileName);
 
+      const { data: existingTemplates, error: existingTemplatesError } = await supabase
+        .from('templates')
+        .select('id, is_default')
+        .eq('user_id', user.id);
+
+      if (existingTemplatesError) throw existingTemplatesError;
+
+      const hasDefaultTemplate = (existingTemplates || []).some(item => item.is_default);
+      const shouldBeDefault = !hasDefaultTemplate;
+
       // 3. Save to Table
-      const { error: dbError } = await supabase.from('templates').insert({
-        user_id: user.id,
-        name: file.name.replace('.pdf', ''),
-        file_url: publicUrl,
-        is_default: templates.length === 0
-      });
+      const { data: insertedTemplates, error: dbError } = await supabase
+        .from('templates')
+        .insert({
+          user_id: user.id,
+          name: file.name.replace('.pdf', ''),
+          file_url: publicUrl,
+          is_default: shouldBeDefault
+        })
+        .select('id');
 
       if (dbError) throw dbError;
+
+      if (shouldBeDefault && insertedTemplates?.[0]?.id) {
+        const { error: clearDefaultError } = await supabase
+          .from('templates')
+          .update({ is_default: false })
+          .eq('user_id', user.id)
+          .neq('id', insertedTemplates[0].id);
+
+        if (clearDefaultError) throw clearDefaultError;
+      }
 
       fetchTemplates();
     } catch (err) {
