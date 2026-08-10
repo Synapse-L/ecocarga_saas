@@ -257,11 +257,9 @@ export default function Dashboard() {
     
     setTimeout(async () => {
       try {
-        let templateUrl: string | undefined = proposal.template?.file_url ?? undefined;
+        let templateUrl: string | undefined;
 
-        if (!templateUrl) {
-          templateUrl = await resolveDefaultTemplateUrl(supabase, userId);
-        }
+        templateUrl = await resolveDefaultTemplateUrl(supabase, userId);
 
         // A página de valores é desenhada nativamente; o componente que antes
         // era capturado do DOM não existe mais.
@@ -597,11 +595,9 @@ export default function Dashboard() {
     setCurrentProposal(proposal.commercial_data);
 
     try {
-      let templateUrl: string | undefined = proposal.template?.file_url ?? undefined;
+      let templateUrl: string | undefined;
 
-      if (!templateUrl) {
-        templateUrl = await resolveDefaultTemplateUrl(supabase, userId);
-      }
+      templateUrl = await resolveDefaultTemplateUrl(supabase, userId);
 
       if (!templateUrl) {
         // Sem template no banco: gera só capa + página de valores
