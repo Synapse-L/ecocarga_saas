@@ -7,6 +7,25 @@ type TemplateRecord = {
   created_at?: string | null;
 };
 
+async function isTemplateUrlReachable(url: string): Promise<boolean> {
+  if (!url) return false;
+
+  try {
+    const headResponse = await fetch(url, { method: 'HEAD', redirect: 'follow' });
+    if (headResponse.ok) return true;
+
+    const getResponse = await fetch(url, {
+      method: 'GET',
+      redirect: 'follow',
+      headers: { Range: 'bytes=0-0' }
+    });
+
+    return getResponse.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function resolveDefaultTemplateUrl(
   supabaseClient: SupabaseClient,
   userId?: string | null
@@ -21,37 +40,33 @@ export async function resolveDefaultTemplateUrl(
     .from('templates')
     .select('id, file_url, is_default, created_at')
     .eq('user_id', resolvedUserId)
-    .eq('is_default', true)
+    .order('is_default', { ascending: false })
     .order('created_at', { ascending: false });
 
   if (error) {
     throw error;
   }
 
-  const defaults = (data || []) as TemplateRecord[];
+  const templates = (data || []) as TemplateRecord[];
+  const defaultTemplates = templates.filter(item => item.is_default);
+  const candidates = defaultTemplates.length > 0 ? defaultTemplates : templates;
 
-  if (defaults.length > 1) {
-    console.warn(
-      'Multiple default templates found for the current user. Using the most recently created one.',
-      defaults.map(item => item.id)
-    );
+  for (const candidate of candidates) {
+    if (!candidate.file_url) continue;
+
+    const reachable = await isTemplateUrlReachable(candidate.file_url);
+    if (reachable) {
+      if (candidates.length > 1) {
+        console.info('Using reachable template URL from Supabase', candidate.file_url);
+      }
+      return candidate.file_url;
+    }
   }
 
-  const selected = defaults[0];
-  if (selected?.file_url) {
-    return selected.file_url;
+  const fallback = candidates[0]?.file_url ?? templates[0]?.file_url;
+  if (fallback) {
+    console.warn('No reachable template URL found among Supabase candidates. Falling back to the latest template row.', fallback);
   }
 
-  const { data: latestTemplates, error: latestError } = await supabaseClient
-    .from('templates')
-    .select('id, file_url, is_default, created_at')
-    .eq('user_id', resolvedUserId)
-    .order('created_at', { ascending: false })
-    .limit(1);
-
-  if (latestError) {
-    throw latestError;
-  }
-
-  return latestTemplates?.[0]?.file_url ?? undefined;
+  return fallback ?? undefined;
 }
