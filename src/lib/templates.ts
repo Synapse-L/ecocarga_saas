@@ -10,11 +10,11 @@ type TemplateRecord = {
 export async function resolveDefaultTemplateUrl(
   supabaseClient: SupabaseClient,
   userId?: string | null
-): Promise<string | null> {
+): Promise<string | undefined> {
   const resolvedUserId = userId ?? (await supabaseClient.auth.getUser()).data.user?.id ?? null;
 
   if (!resolvedUserId) {
-    return null;
+    return undefined;
   }
 
   const { data, error } = await supabaseClient
@@ -53,5 +53,5 @@ export async function resolveDefaultTemplateUrl(
     throw latestError;
   }
 
-  return latestTemplates?.[0]?.file_url ?? null;
+  return latestTemplates?.[0]?.file_url ?? undefined;
 }

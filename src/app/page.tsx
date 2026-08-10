@@ -257,7 +257,7 @@ export default function Dashboard() {
     
     setTimeout(async () => {
       try {
-        let templateUrl = proposal.template?.file_url;
+        let templateUrl: string | undefined = proposal.template?.file_url ?? undefined;
 
         if (!templateUrl) {
           templateUrl = await resolveDefaultTemplateUrl(supabase, userId);
@@ -597,7 +597,7 @@ export default function Dashboard() {
     setCurrentProposal(proposal.commercial_data);
 
     try {
-      let templateUrl = proposal.template?.file_url;
+      let templateUrl: string | undefined = proposal.template?.file_url ?? undefined;
 
       if (!templateUrl) {
         templateUrl = await resolveDefaultTemplateUrl(supabase, userId);
