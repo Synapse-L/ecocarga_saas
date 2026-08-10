@@ -57,6 +57,10 @@ export default function SignupPage() {
 
       if (error) throw error;
 
+      // Limpa a sessão anterior para evitar que o navegador continue ligado à
+      // conta antiga após o cadastro de uma nova conta.
+      await supabase.auth.signOut({ scope: 'global' });
+
       // E-mail já cadastrado NÃO vem como erro.
       // Com a confirmação por e-mail ativada, o Supabase responde sucesso de
       // propósito, para que ninguém consiga descobrir quais e-mails existem na
