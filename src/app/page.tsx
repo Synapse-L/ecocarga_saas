@@ -48,7 +48,6 @@ import { buscarItensVendidos, gravarItensDaProposta, ItemVendido } from '@/lib/p
 import { useToast } from '@/components/Toast';
 import { useConfirm } from '@/components/ConfirmDialog';
 import { OnboardingTour, useOnboarding } from '@/components/OnboardingTour';
-import { resolveDefaultTemplateUrl } from '@/lib/templates';
 import AppSidebar from '@/components/AppSidebar';
 import { ShortcutsModal } from '@/components/dashboard/ShortcutsModal';
 import { ChartsSection } from '@/components/dashboard/ChartsSection';
@@ -78,21 +77,19 @@ import {
 
 type ReorderPage = {
   id: string;
-  type: 'template' | 'saas-cover' | 'saas-page6';
+  type: 'template' | 'saas-cover' | 'saas-page6' | 'fixed-page';
   label: string;
   index: number | null;
 };
 
-const buildPageOrder = (pageCount: number) => {
-  const pageOrder: Array<{ type: 'template' | 'saas-cover' | 'saas-page6'; index?: number }> = [];
+const FIXED_PROPOSAL_PAGE_URL = '/proposal-final-page.pdf';
+
+const buildPageOrder = () => {
+  const pageOrder: Array<{ type: 'template' | 'saas-cover' | 'saas-page6' | 'fixed-page'; index?: number }> = [];
 
   pageOrder.push({ type: 'saas-cover' as const });
-
-  for (let i = 0; i < pageCount; i++) {
-    pageOrder.push({ type: 'template' as const, index: i });
-  }
-
   pageOrder.push({ type: 'saas-page6' as const });
+  pageOrder.push({ type: 'fixed-page' as const });
 
   return pageOrder;
 };
@@ -271,10 +268,6 @@ export default function Dashboard() {
     
     setTimeout(async () => {
       try {
-        let templateUrl: string | undefined;
-
-        templateUrl = await resolveDefaultTemplateUrl(supabase, userId);
-
         // A página de valores é desenhada nativamente; o componente que antes
         // era capturado do DOM não existe mais.
         const quoteData = await montarDadosOrcamento(
@@ -282,20 +275,14 @@ export default function Dashboard() {
           profile?.full_name || ''
         );
 
-        if (!templateUrl) {
-          await PDFService.viewQuoteOnly(quoteData);
-        } else {
-          const pageCount = await PDFService.getTemplatePageCount(templateUrl);
-          const pageOrder = buildPageOrder(pageCount);
-
-          await PDFService.viewCustomOrderedPdf(
-            templateUrl,
-            'proposal-cover',
-            'proposal-page-6',
-            pageOrder,
-            quoteData
-          );
-        }
+        await PDFService.viewCustomOrderedPdf(
+          null,
+          'proposal-cover',
+          'proposal-page-6',
+          buildPageOrder(),
+          quoteData,
+          FIXED_PROPOSAL_PAGE_URL
+        );
       } catch (err: unknown) {
         console.error(err);
         const msg = err instanceof Error ? err.message : String(err);
@@ -597,40 +584,16 @@ export default function Dashboard() {
     setCurrentProposal(proposal.commercial_data);
 
     try {
-      let templateUrl: string | undefined;
-
-      templateUrl = await resolveDefaultTemplateUrl(supabase, userId);
-
-      if (!templateUrl) {
-        // Sem template no banco: gera só capa + página de valores
-        setTimeout(async () => {
-          try {
-            await PDFService.downloadTestProposal(
-              'proposal-cover',
-              await montarDadosOrcamento(proposal.commercial_data, profile?.full_name || ''),
-              `Proposta_TESTE_Completa_${proposal.client?.name || proposal.id}`
-            );
-          } catch (err) {
-            console.error(err);
-            toast('Erro ao gerar PDF.', 'error');
-          } finally {
-            setDownloadingId(null);
-          }
-        }, 500);
-        return;
-      }
-
-      // Prepare proposal copy with resolved template for the reorder modal
+      // Mantém a janela de organização para as três páginas finais.
       const proposalWithTemplate = {
         ...proposal,
-        template: { file_url: templateUrl }
+        template: { file_url: '' }
       };
 
       setSelectedProposal(proposalWithTemplate);
       setLoadingPages(true);
       setIsReorderModalOpen(true);
 
-      const pageCount = await PDFService.getTemplatePageCount(templateUrl);
       const initialPages: ReorderPage[] = [];
 
       initialPages.push({
@@ -640,19 +603,17 @@ export default function Dashboard() {
         index: null
       });
 
-      for (let i = 0; i < pageCount; i++) {
-        initialPages.push({
-          id: `template-${i}`,
-          type: 'template',
-          label: `${t('templatePageLabel')} ${i + 1}`,
-          index: i
-        });
-      }
-
       initialPages.push({
         id: 'saas-page6',
         type: 'saas-page6',
         label: `${t('techSpecsPage6')} (SaaS)`,
+        index: null
+      });
+
+      initialPages.push({
+        id: 'fixed-page',
+        type: 'fixed-page',
+        label: 'Página final da proposta',
         index: null
       });
 
@@ -687,12 +648,13 @@ export default function Dashboard() {
         );
 
         await PDFService.generateCustomOrderedPdf(
-          selectedProposal.template.file_url,
+          null,
           'proposal-cover',
           'proposal-page-6',
           pageOrderPayload,
           `Proposta_${selectedProposal.client?.name || selectedProposal.id}`,
-          quoteData
+          quoteData,
+          FIXED_PROPOSAL_PAGE_URL
         );
       } catch (err: unknown) {
         console.error(err);
@@ -1681,6 +1643,7 @@ export default function Dashboard() {
                   <div className="space-y-2">
                     {reorderPages.map((page, index) => {
                       const isSaas = page.type === 'saas-cover' || page.type === 'saas-page6';
+                      const isFixed = page.type === 'fixed-page';
                       return (
                         <motion.div
                           key={page.id}
@@ -1710,7 +1673,7 @@ export default function Dashboard() {
                                   </span>
                                 ) : (
                                   <span className="bg-gray-100 dark:bg-slate-900 text-gray-600 dark:text-slate-400 border border-gray-200/50 dark:border-slate-800 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider">
-                                    {t('templatePageLabel')}
+                                    {isFixed ? 'Página fixa' : t('templatePageLabel')}
                                   </span>
                                 )}
                               </div>

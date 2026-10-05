@@ -148,7 +148,7 @@ export class PDFService {
     templateUrl: string | null,
     coverElementId: string,
     page6ElementId: string,
-    pageOrder: Array<{ type: 'template' | 'saas-cover' | 'saas-page6'; index?: number }>,
+    pageOrder: Array<{ type: 'template' | 'saas-cover' | 'saas-page6' | 'fixed-page'; index?: number }>,
     fileName: string,
     /**
      * Dados da página de valores. Quando presente, ela é DESENHADA no PDF com
@@ -156,12 +156,16 @@ export class PDFService {
      * DOM. É o caminho normal; `page6ElementId` só é usado como reserva para
      * propostas que ainda dependam do componente antigo.
      */
-    quoteData?: DadosOrcamento | null
+    quoteData?: DadosOrcamento | null,
+    fixedPageUrl?: string
   ): Promise<void> {
     try {
       // 1. Capture dynamic pages as PNG bytes (only if they are in pageOrder)
       let coverImageBytes: Uint8Array | null = null;
       let page6ImageBytes: Uint8Array | null = null;
+      const fixedPageBuffer = fixedPageUrl && pageOrder.some(item => item.type === 'fixed-page')
+        ? await carregarTemplate(fixedPageUrl)
+        : null;
 
       if (pageOrder.some(item => item.type === 'saas-cover')) {
         coverImageBytes = await this.captureElementAsPngBytes(coverElementId);
@@ -175,6 +179,7 @@ export class PDFService {
       if (!templateUrl) {
         // No template PDF, just generate a PDF from the SaaS pages in order
         const finalDoc = await PDFDocument.create();
+        const fixedDoc = fixedPageBuffer ? await PDFDocument.load(fixedPageBuffer) : null;
         for (const item of pageOrder) {
           if (item.type === 'saas-cover' && coverImageBytes) {
             const page = finalDoc.addPage([595.27, 841.89]);
@@ -186,6 +191,10 @@ export class PDFService {
             const page = finalDoc.addPage([595.27, 841.89]);
             const jpgImage = await finalDoc.embedPng(page6ImageBytes);
             page.drawImage(jpgImage, { x: 0, y: 0, width: 595.27, height: 841.89 });
+          } else if (item.type === 'fixed-page' && fixedDoc) {
+            const embedded = await finalDoc.embedPage(fixedDoc.getPages()[0]);
+            const page = finalDoc.addPage([595.27, 841.89]);
+            page.drawPage(embedded, { x: 0, y: 0, width: 595.27, height: 841.89 });
           }
         }
         finalPdfBytes = await finalDoc.save();
@@ -232,6 +241,7 @@ export class PDFService {
 
         // 4. Create the final document and copy pages in the requested order
         const finalDoc = await PDFDocument.create();
+        const fixedDoc = fixedPageBuffer ? await PDFDocument.load(fixedPageBuffer) : null;
 
         for (const item of pageOrder) {
           if (item.type === 'saas-cover' && saasCoverDoc) {
@@ -259,6 +269,10 @@ export class PDFService {
                 page.drawPage(embedded, { x: 0, y: 0, width, height });
               }
             }
+          } else if (item.type === 'fixed-page' && fixedDoc) {
+            const embedded = await finalDoc.embedPage(fixedDoc.getPages()[0]);
+            const page = finalDoc.addPage([width, height]);
+            page.drawPage(embedded, { x: 0, y: 0, width, height });
           }
         }
 
@@ -327,15 +341,19 @@ export class PDFService {
     templateUrl: string | null,
     coverElementId: string,
     page6ElementId: string,
-    pageOrder: Array<{ type: 'template' | 'saas-cover' | 'saas-page6'; index?: number }>,
+    pageOrder: Array<{ type: 'template' | 'saas-cover' | 'saas-page6' | 'fixed-page'; index?: number }>,
     /** Mesma finalidade que em generateCustomOrderedPdf: quando presente, a
      *  página de valores é desenhada nativamente em vez de capturada do DOM. */
-    quoteData?: DadosOrcamento | null
+    quoteData?: DadosOrcamento | null,
+    fixedPageUrl?: string
   ): Promise<void> {
     try {
       // Capture both if needed in the order
       let coverImageBytes: Uint8Array | null = null;
       let page6ImageBytes: Uint8Array | null = null;
+      const fixedPageBuffer = fixedPageUrl && pageOrder.some(item => item.type === 'fixed-page')
+        ? await carregarTemplate(fixedPageUrl)
+        : null;
 
       if (pageOrder.some(item => item.type === 'saas-cover')) {
         coverImageBytes = await this.captureElementAsPngBytes(coverElementId);
@@ -349,6 +367,7 @@ export class PDFService {
       if (!templateUrl) {
         // Fallback for no template: just Cover and Page 6 combined (2 pages)
         const finalDoc = await PDFDocument.create();
+        const fixedDoc = fixedPageBuffer ? await PDFDocument.load(fixedPageBuffer) : null;
         if (coverImageBytes) {
           const page = finalDoc.addPage([595.27, 841.89]);
           const jpgImage = await finalDoc.embedPng(coverImageBytes);
@@ -360,6 +379,11 @@ export class PDFService {
           const page = finalDoc.addPage([595.27, 841.89]);
           const jpgImage = await finalDoc.embedPng(page6ImageBytes);
           page.drawImage(jpgImage, { x: 0, y: 0, width: 595.27, height: 841.89 });
+        }
+        if (fixedDoc) {
+          const embedded = await finalDoc.embedPage(fixedDoc.getPages()[0]);
+          const page = finalDoc.addPage([595.27, 841.89]);
+          page.drawPage(embedded, { x: 0, y: 0, width: 595.27, height: 841.89 });
         }
         finalPdfBytes = await finalDoc.save();
       } else {
@@ -395,6 +419,7 @@ export class PDFService {
         }
 
         const finalDoc = await PDFDocument.create();
+        const fixedDoc = fixedPageBuffer ? await PDFDocument.load(fixedPageBuffer) : null;
         for (const item of pageOrder) {
           if (item.type === 'saas-cover' && saasCoverDoc) {
             const [copiedPage] = await finalDoc.copyPages(saasCoverDoc, [0]);
@@ -415,6 +440,10 @@ export class PDFService {
                 page.drawPage(embedded, { x: 0, y: 0, width, height });
               }
             }
+          } else if (item.type === 'fixed-page' && fixedDoc) {
+            const embedded = await finalDoc.embedPage(fixedDoc.getPages()[0]);
+            const page = finalDoc.addPage([width, height]);
+            page.drawPage(embedded, { x: 0, y: 0, width, height });
           }
         }
         finalPdfBytes = await finalDoc.save();

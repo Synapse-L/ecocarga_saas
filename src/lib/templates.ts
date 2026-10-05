@@ -5,6 +5,7 @@ type TemplateRecord = {
   file_url?: string | null;
   is_default?: boolean | null;
   created_at?: string | null;
+  user_id?: string | null;
 };
 
 async function isTemplateUrlReachable(url: string): Promise<boolean> {
@@ -32,16 +33,17 @@ export async function resolveDefaultTemplateUrl(
 ): Promise<string | undefined> {
   const resolvedUserId = userId ?? (await supabaseClient.auth.getUser()).data.user?.id ?? null;
 
-  if (!resolvedUserId) {
-    return undefined;
-  }
-
-  const { data, error } = await supabaseClient
+  let query = supabaseClient
     .from('templates')
-    .select('id, file_url, is_default, created_at')
-    .eq('user_id', resolvedUserId)
+    .select('id, file_url, is_default, created_at, user_id')
     .order('is_default', { ascending: false })
     .order('created_at', { ascending: false });
+
+  query = resolvedUserId
+    ? query.or(`user_id.is.null,user_id.eq.${resolvedUserId}`)
+    : query.is('user_id', null);
+
+  const { data, error } = await query;
 
   if (error) {
     throw error;
