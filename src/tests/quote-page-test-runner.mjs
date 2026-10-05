@@ -35,6 +35,8 @@ const raiz = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const cache = join(raiz, 'node_modules', '.cache');
 mkdirSync(cache, { recursive: true });
 const saida = mkdtempSync(join(cache, 'quote-page-'));
+const previewDir = process.env.QUOTE_PREVIEW_DIR;
+if (previewDir) mkdirSync(previewDir, { recursive: true });
 
 function compilar() {
   // Chama o tsc pelo Node, e não por `npx`: no Windows o npx é um .cmd, que o
@@ -245,8 +247,10 @@ for (const { label, data, esperado } of cenarios) {
   ok(juntos.includes(`${parcelas}x de R$ ${brl(esperado.total / parcelas)}`),
     `parcelamento ${parcelas}x sobre o mesmo total`);
 
-  ok(texto.some(t => t.startsWith('R. Francisca Maria de Abrantes, S/N')),
+  ok(texto.includes('Rua Francisco Paulino da Silva, no bairro Jardim Sorrilandia, em Sousa - PB, CEP 58805-540'),
     'endereço do emitente sai inteiro, sem corte');
+  ok(texto.filter(t => t === 'Endereço:').length === (data.client.address ? 2 : 1),
+    'endereço do cliente só aparece quando informado');
   ok(!juntos.includes('…'), 'nenhum texto truncado com reticências');
   if (data.client.name) ok(texto.includes(data.client.name), 'nome do cliente');
 
@@ -257,6 +261,59 @@ for (const { label, data, esperado } of cenarios) {
   ok(blob.size > 0, 'gerarOrcamentoBlob(), o caminho da tela de revisão, funciona');
 
   console.log(`\n${linhas.some(l => l.includes('✗')) ? '❌' : '✅'}  ${label}`);
+  linhas.forEach(l => console.log(l));
+}
+
+// PNGs reais, com proporções distintas, exercitam a mesma área das fotos dos carregadores.
+const fotos = [
+  readFileSync(join(raiz, 'public', 'ecocarga-logo-main.png')),
+  readFileSync(join(raiz, 'public', 'lightning-temp.png')),
+];
+
+for (const quantidade of [1, 2, 3]) {
+  linhas.length = 0;
+  const dados = await montarDadosOrcamento(cenarios[0].data, 'João Silva');
+  dados.cliente.endereco = '';
+  dados.itens = Array.from({ length: quantidade }, (_, i) => ({
+    ...dados.itens[0],
+    descricao: `Carregador ${i + 1} - 40 kW`,
+    detalhes: i === 0 ? [] : dados.itens[0].detalhes,
+    imagemBytes: fotos[i % fotos.length],
+    imagemTipo: 'png',
+  }));
+
+  const doc = await PDFDocument.create();
+  const imagens = [], textos = [], separadores = [];
+  const addPage = doc.addPage.bind(doc);
+  doc.addPage = (...args) => {
+    const page = addPage(...args);
+    const drawImage = page.drawImage.bind(page);
+    const drawText = page.drawText.bind(page);
+    const drawLine = page.drawLine.bind(page);
+    page.drawImage = (image, options) => { imagens.push(options); return drawImage(image, options); };
+    page.drawText = (text, options) => { textos.push({ text, ...options }); return drawText(text, options); };
+    page.drawLine = (options) => { separadores.push(options); return drawLine(options); };
+    return page;
+  };
+
+  await drawQuotePage(doc, dados);
+  ok(imagens.length === quantidade, 'todas as PNGs foram incorporadas');
+  imagens.forEach((img, i) => {
+    const descricao = textos.find(t => t.text === dados.itens[i].descricao);
+    const topo = separadores[i + 1].start.y;
+    const base = separadores[i + 2].start.y;
+    ok(descricao.x - (img.x + img.width) >= 12,
+      `PNG ${i + 1}: pelo menos 12 pt de distância da descrição`);
+    ok(img.y >= base + 10 - 0.01 && img.y + img.height <= topo - 10 + 0.01,
+      `PNG ${i + 1}: margens internas de 10 pt na linha`);
+    const proporcao = fotos[i % fotos.length].readUInt32BE(16) / fotos[i % fotos.length].readUInt32BE(20);
+    ok(Math.abs(img.width / img.height - proporcao) < 0.001,
+      `PNG ${i + 1}: proporção preservada`);
+  });
+  const bytes = await doc.save();
+  ok(menorY(conteudoDoPdf(bytes)) >= 34, 'conteúdo com imagens dentro da margem A4');
+  if (previewDir) writeFileSync(join(previewDir, `orcamento-${quantidade}-produtos.pdf`), bytes);
+  console.log(`\n${linhas.some(l => l.includes('✗')) ? '❌' : '✅'}  Espaçamento com ${quantidade} PNG(s)`);
   linhas.forEach(l => console.log(l));
 }
 

@@ -15,13 +15,12 @@ import { ProposalData, lerItens } from '@/types/proposal';
  */
 
 // ─── Identificação do emitente ────────────────────────────────────────────────
-// Dados confirmados pelo cliente: o cabeçalho usa o nome fantasia, não a razão
-// social, e o endereço não tem numeração — daí o "S/N".
+// O cabeçalho usa o nome fantasia e o endereço comercial da EcoCarga.
 export const EMITENTE = {
   nome: 'ECOCARGA',
   cnpj: '55.412.542/0001-63',
-  endereco: 'R. Francisca Maria de Abrantes, S/N — Estação, Sousa/PB',
-  cep: '58807-305',
+  endereco: 'Rua Francisco Paulino da Silva, no bairro Jardim Sorrilandia, em Sousa - PB',
+  cep: '58805-540',
   telefone: '(11) 91283-1823',
   email: 'suporte@ecocarga.com.br',
   site: 'ecocargamobi.com.br',
@@ -225,18 +224,18 @@ export async function drawQuotePage(doc: PDFDocument, d: DadosOrcamento): Promis
   let y = A4.h - MARGEM;
 
   // ── 1. Cabeçalho do emitente ────────────────────────────────────────────────
-  const hCab = 46;
+  const hCab = 58;
   y -= hCab;
   caixa(page, MARGEM, y, LARGURA, hCab);
   {
-    let ly = y + hCab - 12;
+    let ly = y + hCab - 14;
     txt(EMITENTE.nome, MARGEM + 8, ly, { size: 9, font: neg });
-    ly -= 10;
+    ly -= 12;
     rotulo('CNPJ:', EMITENTE.cnpj, MARGEM + 8, ly, 260);
-    ly -= 9.5;
-    rotulo('Endereço:', `${EMITENTE.endereco} — CEP ${EMITENTE.cep}`, MARGEM + 8, ly, 330);
-    ly -= 9.5;
-    rotulo('Contato:', `${EMITENTE.telefone} · ${EMITENTE.email}`, MARGEM + 8, ly, 330);
+    ly -= 12;
+    rotulo('Endereço:', `${EMITENTE.endereco}, CEP ${EMITENTE.cep}`, MARGEM + 8, ly, LARGURA - 16);
+    ly -= 12;
+    rotulo('Contato:', `${EMITENTE.telefone} · ${EMITENTE.email}`, MARGEM + 8, ly, LARGURA - 16);
 
     txt('EcoCarga', MARGEM + LARGURA - 8, y + hCab - 14, {
       size: 12, font: neg, cor: COR.verde, alinhar: 'dir',
@@ -253,30 +252,31 @@ export async function drawQuotePage(doc: PDFDocument, d: DadosOrcamento): Promis
   rotulo('Tipo do documento:', 'Proposta comercial', MARGEM + 8, y + 4.5, 300);
 
   // ── 3. Identificação, duas colunas ──────────────────────────────────────────
-  const hId = 56;
+  const hId = 62;
   y -= hId;
   caixa(page, MARGEM, y, LARGURA, hId);
   {
     const colE = MARGEM + 8;
     const colD = MARGEM + LARGURA / 2 + 4;
     const larg = LARGURA / 2 - 14;
-    let ly = y + hId - 12;
-
-    rotulo('Cliente:', d.cliente.nome || '—', colE, ly, larg, neg);
-    rotulo('Emissão:', d.emissao, colD, ly, larg);
-    ly -= 10.5;
-    rotulo('Endereço:', d.cliente.endereco || '—', colE, ly, larg);
-    rotulo('Validade:', `${d.validadeDias} dias`, colD, ly, larg);
-    ly -= 10.5;
-    rotulo('Telefone:', d.cliente.telefone || '—', colE, ly, larg);
-    rotulo('Prazo de entrega:', d.prazoEntrega || '—', colD, ly, larg);
-    ly -= 10.5;
-    rotulo('Vendedor:', d.vendedor || '—', colE, ly, larg);
-    rotulo('Pagamento:', d.condicaoPagamento || '—', colD, ly, larg);
+    const topo = y + hId - 14;
+    const dadosCliente = [
+      ['Cliente:', d.cliente.nome || '—'],
+      ...(d.cliente.endereco.trim() ? [['Endereço:', d.cliente.endereco]] : []),
+      ['Telefone:', d.cliente.telefone || '—'],
+      ['Vendedor:', d.vendedor || '—'],
+    ];
+    dadosCliente.forEach(([r, v], i) => {
+      rotulo(r, v, colE, topo - i * 12, larg, i === 0 ? neg : reg);
+    });
+    rotulo('Emissão:', d.emissao, colD, topo, larg);
+    rotulo('Validade:', `${d.validadeDias} dias`, colD, topo - 12, larg);
+    rotulo('Prazo de entrega:', d.prazoEntrega || '—', colD, topo - 24, larg);
+    rotulo('Pagamento:', d.condicaoPagamento || '—', colD, topo - 36, larg);
   }
 
   // ── 4. Tabela de produtos ───────────────────────────────────────────────────
-  y -= 16;
+  y -= 18;
   txt('PRODUTOS', MARGEM, y, { size: 7.5, font: neg, cor: COR.suave });
 
   // ── Colunas ───────────────────────────────────────────────────────────────
@@ -293,10 +293,14 @@ export async function drawQuotePage(doc: PDFDocument, d: DadosOrcamento): Promis
   const dirUnit  = dirTotal - W_TOTAL - GAP;
   const dirQtd   = dirUnit  - W_UNIT  - GAP;
 
+  const compacto = d.itens.length > 2;
+  const fotoW = compacto ? 40 : 56;
+  const fotoPadding = 10;
+  const fotoGap = 14;
   const cx = {
     num: MARGEM + 2,
     foto: MARGEM + 16,
-    desc: MARGEM + 56,
+    desc: MARGEM + 16 + fotoW + fotoGap,
   };
   // A descrição termina onde a coluna de quantidade começa.
   const larguraDesc = (dirQtd - W_QTD) - cx.desc - GAP;
@@ -305,6 +309,7 @@ export async function drawQuotePage(doc: PDFDocument, d: DadosOrcamento): Promis
   page.drawLine({ start: { x: MARGEM, y }, end: { x: MARGEM + LARGURA, y }, thickness: 0.7, color: COR.linha });
   y -= 10;
   txt('#', cx.num, y, { size: 7, cor: COR.suave });
+  txt('Imagem', cx.foto, y, { size: 7, cor: COR.suave });
   txt('Descrição', cx.desc, y, { size: 7, cor: COR.suave });
   txt('Qtd.', dirQtd, y, { size: 7, cor: COR.suave, alinhar: 'dir' });
   txt('Preço un.', dirUnit, y, { size: 7, cor: COR.suave, alinhar: 'dir' });
@@ -314,12 +319,11 @@ export async function drawQuotePage(doc: PDFDocument, d: DadosOrcamento): Promis
 
   // Altura da linha acompanha a quantidade de especificações, já que cada uma
   // ocupa uma linha própria. Com poucos itens a foto é maior.
-  const compacto = d.itens.length > 2;
   const H_ESPEC = compacto ? 9 : 10;      // altura de cada linha de especificação
-  const fotoW = compacto ? 34 : 44;
   const maxEspecs = Math.max(1, ...d.itens.map(i => i.detalhes.length));
-  const hLinha = 16 + maxEspecs * H_ESPEC + 8;
-  const fotoH = Math.min(hLinha - 12, compacto ? 46 : 62);
+  const alturaFoto = compacto ? 46 : 56;
+  const hLinha = Math.max(16 + maxEspecs * H_ESPEC + 8, alturaFoto + fotoPadding * 2);
+  const fotoH = Math.min(hLinha - fotoPadding * 2, alturaFoto);
 
   let totalGeral = 0;
   let totalQtd = 0;
@@ -345,7 +349,7 @@ export async function drawQuotePage(doc: PDFDocument, d: DadosOrcamento): Promis
         const w = img.width * k, h = img.height * k;
         page.drawImage(img, {
           x: cx.foto + (fotoW - w) / 2,
-          y: topo - 8 - h,
+          y: topo - (hLinha + h) / 2,
           width: w, height: h,
         });
       } catch {
@@ -382,28 +386,28 @@ export async function drawQuotePage(doc: PDFDocument, d: DadosOrcamento): Promis
 
   const boxW = 200;
   const boxX = MARGEM + LARGURA - boxW;
-  const hTot = 14 + (d.mostrarAVista ? 22 : 0) + (d.mostrarParcelado ? 14 : 0);
+  const hTot = 20 + (d.mostrarAVista ? 24 : 0) + (d.mostrarParcelado ? 20 : 0);
   const topoTot = y;
   y -= hTot;
   caixa(page, boxX, y, boxW, hTot);
 
   {
-    let ly = topoTot - 10;
+    let ly = topoTot - 13;
     txt('Valor total', boxX + 8, ly, { size: 7.5, cor: COR.suave });
     txt(`R$ ${brl(totalGeral)}`, boxX + boxW - 8, ly, { size: 8, alinhar: 'dir' });
 
     if (d.mostrarAVista) {
-      ly -= 6;
-      page.drawRectangle({ x: boxX, y: ly - 16, width: boxW, height: 22, color: COR.verde });
-      txt('À vista', boxX + 8, ly - 9, { size: 8, cor: COR.branco });
-      txt(`R$ ${brl(totalGeral)}`, boxX + boxW - 8, ly - 10, {
+      const topoAVista = topoTot - 20;
+      page.drawRectangle({ x: boxX, y: topoAVista - 24, width: boxW, height: 24, color: COR.verde });
+      txt('À vista', boxX + 8, topoAVista - 15, { size: 8, cor: COR.branco });
+      txt(`R$ ${brl(totalGeral)}`, boxX + boxW - 8, topoAVista - 16, {
         size: 11, font: neg, cor: COR.branco, alinhar: 'dir',
       });
-      ly -= 22;
+      ly = topoAVista - 24;
     }
 
     if (d.mostrarParcelado) {
-      ly -= 10;
+      ly = (d.mostrarAVista ? ly : topoTot - 20) - 13;
       txt('Parcelado', boxX + 8, ly, { size: 7.5, cor: COR.suave });
       txt(`${d.parcelas}x de R$ ${brl(totalGeral / d.parcelas)}`, boxX + boxW - 8, ly, {
         size: 8, alinhar: 'dir',
@@ -426,17 +430,17 @@ export async function drawQuotePage(doc: PDFDocument, d: DadosOrcamento): Promis
   ];
 
   y -= 14;
-  const hCond = 16 + condicoes.length * 9.5 + 6;
+  const hCond = 18 + condicoes.length * 10 + 8;
   y -= hCond;
   caixa(page, MARGEM, y, LARGURA, hCond);
   {
-    let ly = y + hCond - 11;
+    let ly = y + hCond - 13;
     txt('CONDIÇÕES DE FORNECIMENTO', MARGEM + 8, ly, { size: 7, font: neg, cor: COR.suave });
-    ly -= 11;
+    ly -= 13;
     condicoes.forEach((c, i) => {
       txt(`${i + 1}.`, MARGEM + 8, ly, { size: 7, cor: COR.suave });
       txt(c, MARGEM + 20, ly, { size: 7, maxW: LARGURA - 30 });
-      ly -= 9.5;
+      ly -= 10;
     });
   }
 

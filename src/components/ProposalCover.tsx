@@ -106,13 +106,6 @@ export const ProposalCover: React.FC<Props> = ({ data, representativeName }) => 
             <span style={{ fontWeight: 500 }}>{clientName}</span>
           </div>
 
-          {/* Endereço do cliente */}
-          {data.client?.address && (
-            <div style={{ fontSize: '11pt', color: '#4a5b54', lineHeight: '1.4', marginTop: '1mm', maxWidth: '140mm' }}>
-              {data.client.address}
-            </div>
-          )}
-
           {/* Data de emissão e validade */}
           <div style={{ fontSize: '11pt', color: '#7c868c', marginTop: '2mm', lineHeight: '1.5' }}>
             <span style={{ fontWeight: 700 }}>{t('emission')}: </span>

@@ -65,7 +65,6 @@ function parseCurrency(raw: string): number {
 interface FormErrors {
   clientName?: string;
   clientPhone?: string;
-  clientAddress?: string;
   productName?: string;
   power?: string;
   price?: string;
@@ -271,8 +270,6 @@ function NewProposalPage() {
         newErrors.clientPhone = 'Telefone é obrigatório.';
       else if (formData.client.phone.replace(/\D/g, '').length < 10)
         newErrors.clientPhone = 'Telefone inválido. Mínimo 10 dígitos.';
-      if (!formData.client.address.trim())
-        newErrors.clientAddress = 'Endereço é obrigatório.';
     }
 
     if (step === 1) {
@@ -641,15 +638,14 @@ function NewProposalPage() {
                     </Field>
 
                     <div className="md:col-span-2">
-                      <Field label={t('clientAddress')} error={errors.clientAddress} required>
+                      <Field label={t('clientAddress')}>
                         <input
                           type="text"
                           value={formData.client.address}
                           onChange={(e) => {
                             setFormData(prev => ({ ...prev, client: { ...prev.client, address: e.target.value } }));
-                            if (errors.clientAddress) setErrors(prev => ({ ...prev, clientAddress: undefined }));
                           }}
-                          className={inputCls(!!errors.clientAddress)}
+                          className={inputCls()}
                           placeholder="Rua Exemplo, 123 - Bairro, Cidade - UF"
                           maxLength={200}
                           autoComplete="street-address"
